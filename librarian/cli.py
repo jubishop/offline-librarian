@@ -91,7 +91,11 @@ def embed(args, parser):
               else "Resumed: embedding carries on.")
         return 0
     if args.action == "install":
-        path = agent.install(home(), model)
+        try:
+            path = agent.install(home(), model)
+        except RuntimeError as exc:
+            print(f"Couldn't install the worker: {exc}.", file=sys.stderr)
+            return 1
         print(f"Installed {path}. The worker embeds in the background at low priority, waits while Ollama has "
               f"another model loaded, and keeps the index current. Logs: {home()}/embed.log")
         return 0

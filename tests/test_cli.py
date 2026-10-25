@@ -150,13 +150,21 @@ class BackgroundWorkerCommandsTest(unittest.TestCase):
         for folder in (self.home, self.user, bin_dir):
             os.makedirs(folder)
         self.calls = os.path.join(tmp.name, "launchctl-calls")
+        # Like launchd, bootout returns before the job is gone: print still finds it twice more, and bootstrap
+        # fails with 5 (Input/output error) until it has gone.
         with open(os.path.join(bin_dir, "launchctl"), "w") as f:
             f.write(f"""#!/bin/sh
 echo "$*" >> '{self.calls}'
+state='{tmp.name}'
 case "$1" in
-  bootstrap) touch '{tmp.name}/loaded' ;;
-  bootout) rm -f '{tmp.name}/loaded' ;;
-  print) test -e '{tmp.name}/loaded' ;;
+  bootstrap) test -e "$state/loaded" && exit 5; touch "$state/loaded" ;;
+  bootout) test -e "$state/loaded" && echo 2 > "$state/going" ;;
+  print)
+    if test -e "$state/going"; then
+      left=$(cat "$state/going")
+      if test "$left" -le 0; then rm -f "$state/going" "$state/loaded"; else echo $((left - 1)) > "$state/going"; fi
+    fi
+    test -e "$state/loaded" ;;
 esac
 """)
         os.chmod(os.path.join(bin_dir, "launchctl"), 0o755)
@@ -184,7 +192,11 @@ esac
                          ["embed", "worker", "--model", "embeddinggemma-2:270m-bf16-text"])
         self.assertTrue(agent["ProgramArguments"][0].endswith("/bin/librarian"))
         self.assertEqual(agent["EnvironmentVariables"]["OFFLINE_LIBRARIAN_HOME"], self.home)
-        self.assertEqual(self.launchctl_calls(), ["bootout", "bootstrap"])
+        self.assertEqual(self.launchctl_calls(), ["bootout", "print", "bootstrap"])
+        self.assertIn("background worker: running", self.run_librarian("embed", "status").stdout)
+
+        again = self.run_librarian("embed", "install")  # over the running worker, as after an update
+        self.assertEqual(again.returncode, 0, again.stderr)
         self.assertIn("background worker: running", self.run_librarian("embed", "status").stdout)
 
         removed = self.run_librarian("embed", "uninstall")
