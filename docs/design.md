@@ -90,6 +90,9 @@ The user chose these on 2026-10-25:
   page can't reach it through DNS rebinding; this needs no password.
 - **Nothing from the internet.** The page loads no scripts, fonts or styles
   from elsewhere, so it works with the internet down.
+- **Always running.** Its server is a per-user launch agent that starts at
+  login, restarts after a crash, and listens on a fixed port, so a phone's
+  bookmark always works. Qwen loads only when a question needs it.
 
 ## Sources
 
