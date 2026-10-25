@@ -96,8 +96,13 @@ copyright notice.
 4. Show the answer with each cited passage, and let the reader open the full
    article.
 
-The pi skill uses the same search command, and pi's own model writes the
-answer.
+In pi, the user chose on 2026-10-25 to have pi's own model write the answer:
+the skill tells it to run `librarian search --json` before every answer, to
+search again with other words when the passages fall short, to read whole
+articles with `librarian read`, and to cite what it used. Follow-ups then work
+as in any pi conversation. Searching depends on the model following the
+skill, and `/skill:offline-librarian` forces the skill to load; `librarian ask`
+and the browser page search in code.
 
 ## Measurements
 
