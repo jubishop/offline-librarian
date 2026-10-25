@@ -43,6 +43,22 @@ a Pushover notification (with the keys in `~/.env`) when the first full pass
 finishes or a pass fails. Builds and embedding from the terminal also run at
 Background priority.
 
+## Use it from pi
+
+The [pi](https://github.com/badlogic/pi-mono) skill in
+`skills/offline-librarian` has pi's model search the library before every
+answer, read whole articles when the details matter, and cite what it used.
+Link the skill into pi and the command onto your PATH from this checkout:
+
+```sh
+ln -s "$PWD/skills/offline-librarian" ~/.pi/agent/skills/offline-librarian
+ln -s "$PWD/bin/librarian" ~/.local/bin/librarian
+```
+
+pi offers the skill for matching questions; `/skill:offline-librarian
+QUESTION` forces it. It is meant for pi with a local model, which keeps
+working when cloud-based assistants can't.
+
 The library lives in `~/.local/share/offline-librarian`, or in
 `$OFFLINE_LIBRARIAN_HOME` when that is set: the books in `zim/`, the
 articles and their keyword index in `library.sqlite`, and the meaning index in
