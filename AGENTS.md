@@ -51,5 +51,7 @@ the [README](README.md) and the [design](docs/design.md). Its command is
 - Tests never touch the internet; fake web servers stand in for Kiwix.
 - Code adapted from Survival LLM keeps its notice and points to
   `LICENSE.survival-llm`.
-- Install launch agents (`bin/librarian embed install`) only from the primary
-  checkout: an agent runs the code it was installed from.
+- Install launch agents (`bin/librarian embed install`, `serve install`) only
+  from the primary checkout: an agent runs the code it was installed from.
+- Don't test the browser page against the real library's history: delete any
+  test conversations from `history.sqlite` afterwards.

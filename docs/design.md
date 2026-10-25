@@ -207,6 +207,17 @@ These were made while building, not by the user, and can change.
   million rows on the M5 Pro (2 million measured, 2026-10-25), so no
   approximate index or extra dependency is needed. Keyword and meaning
   rankings are merged by reciprocal rank fusion (k = 60).
+- **The page server is the standard library's.** `librarian serve` is a
+  `ThreadingHTTPServer` on port 8740 and every interface. It checks each
+  request's Host against the Mac's names and addresses (hostname,
+  `LocalHostName.local`, `ifconfig` addresses, and Tailscale's when its CLI is
+  installed), refreshed every minute, and takes writes only as
+  `application/json` with a matching Origin, which a cross-site page can't
+  send without a CORS preflight the server never grants. Answers stream as
+  server-sent events. A `server.running` marker left by a run that never
+  stopped cleanly counts as a crash, and launchd's SIGTERM counts as a clean
+  stop. The page is one HTML file with inline styles and scripts, and it
+  escapes everything before formatting it.
 - **Ollama makes the vectors**, with EmbeddingGemma's retrieval prompts
   (`title: … | text: …` for passages, `task: search result | query: …` for
   questions). It already runs the model on the GPU through MLX.
