@@ -54,6 +54,8 @@ hand-written pages to bypass failed checks.
 
 ## Active pages
 
+- [Design](design.md): what Offline Librarian does, the decisions behind it,
+  its sources, and build-time measurements.
 - [Project Starter foundation](foundation/README.md): shared engineering,
   knowledge search, and task tracking policy.
 - [Development workflow](development-workflow.md): this project's setup,
