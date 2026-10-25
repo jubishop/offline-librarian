@@ -112,9 +112,20 @@ These were made while building, not by the user, and can change.
 - **One SQLite file.** Articles are stored compressed, passages are offsets
   into them, and the FTS5 index stores no text of its own. Each source is
   built in one transaction, and only rebuilt when its file changes.
+- **Vectors in a flat file, searched with NumPy.** Each passage's 768
+  EmbeddingGemma dimensions are stored as float16 rows in `vectors.f16`, with
+  their passage ids in `vectors.ids`, appended in id order so an interrupted
+  run resumes. A search compares the question with every row: about 0.6
+  seconds for 10 million rows on the M5 Pro (2 million measured, 2026-10-25),
+  so no approximate index or extra dependency is needed. Keyword and meaning
+  rankings are merged by reciprocal rank fusion (k = 60).
+- **Ollama makes the vectors**, with EmbeddingGemma's retrieval prompts
+  (`title: … | text: …` for passages, `task: search result | query: …` for
+  questions). It already runs the model on the GPU through MLX.
 
 ## Open questions
 
-- How to make embedding faster, and how much it saves.
-- How to store and search about 10 million vectors quickly: a flat file
-  searched with NumPy, or an approximate index.
+- How to make embedding faster. Through Ollama it reaches about 12,000 tokens
+  a second; larger batches and parallel requests didn't help (2026-10-25).
+  Running EmbeddingGemma with MLX directly might, at the cost of new
+  dependencies and Hugging Face's gated weights.

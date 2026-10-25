@@ -8,18 +8,28 @@ terminal, a browser page, or a pi skill.
 It needs macOS or Linux, [uv](https://docs.astral.sh/uv/), and `pdftotext`
 from poppler. Run `bin/setup` once to install its Python and packages. It is
 being built in stages; see the [design](docs/design.md). So far it downloads
-the books, builds the library, and searches it by keyword:
+the books, builds the library, and searches it by keyword and by meaning:
 
 ```sh
 bin/librarian fetch                    # every book, about 32 GB
-bin/librarian build                    # text and search index
+bin/librarian build                    # text and keyword index
+bin/librarian embed                    # meaning index; needs Ollama, takes days
 bin/librarian search "how much bleach per gallon of water"
 bin/librarian read 1234                # the article a passage comes from
 ```
 
+`embed` gives every passage an EmbeddingGemma vector through
+[Ollama](https://ollama.com), with `embeddinggemma-2:270m-bf16-text` unless
+`--model` names another. Stop it any time; running it again carries on, and
+after a later `build` it embeds only the new passages. Until a passage has a
+vector it is found by keyword only. `search` uses the vectors whenever they
+exist, and says so when Ollama can't be reached and it falls back to
+keywords. Ollama's address comes from `OLLAMA_HOST`, as for Ollama itself.
+
 The library lives in `~/.local/share/offline-librarian`, or in
-`$OFFLINE_LIBRARIAN_HOME` when that is set: the books in `zim/`, and the
-articles and their search index in `library.sqlite`. Run `fetch` again to
+`$OFFLINE_LIBRARIAN_HOME` when that is set: the books in `zim/`, the
+articles and their keyword index in `library.sqlite`, and the meaning index in
+`vectors.*`. Run `fetch` again to
 resume an interrupted download; each file is checked against its SHA-256
 before it is kept. Run `build` again after fetching newer books; it rebuilds
 only the books whose file changed, plus any named with `--rebuild`, such as
