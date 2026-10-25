@@ -1,0 +1,13 @@
+# project-starter:begin
+.DS_Store
+.cache/
+.config/qmd/
+.env
+.env.*
+!.env.example
+.envrc.local
+__pycache__/
+*.py[cod]
+worktrees/
+.todos/
+# project-starter:end
