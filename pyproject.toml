@@ -6,6 +6,7 @@ requires-python = ">=3.14"
 dependencies = [
   "libzim>=3.13,<4",
   "lxml>=6.1,<7",
+  "numpy>=2.5,<3",
 ]
 
 [tool.uv]

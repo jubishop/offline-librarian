@@ -38,14 +38,16 @@ def library_path():
     return os.path.join(home(), "library.sqlite")
 
 
-def open_library():
-    """The library, or None after saying how to build one."""
+def open_library(model=None):
+    """The library, searching by meaning too when its passages have vectors; None after saying how to build one."""
+    from librarian import meaning
     from librarian.library import Library
     if not os.path.exists(library_path()):
         print(f"There is no library at {library_path()} yet. Run librarian fetch, then librarian build.",
               file=sys.stderr)
         return None
-    return Library(library_path())
+    embedder = meaning.Embedder(model=model or meaning.DEFAULT_MODEL)
+    return Library(library_path(), meaning=meaning.Meaning(home(), embedder))
 
 
 def build(args, parser):
@@ -63,11 +65,31 @@ def build(args, parser):
     return 0
 
 
+def embed(args, parser):
+    from librarian import meaning
+    if not os.path.exists(library_path()):
+        print("There is no library to embed yet. Run librarian build first.", file=sys.stderr)
+        return 1
+    try:
+        count = meaning.embed_library(home(), meaning.Embedder(model=args.model or meaning.DEFAULT_MODEL), batch=args.batch,
+                                      log=lambda line: print(line, flush=True))
+    except meaning.MeaningUnavailable as exc:
+        print(f"Stopped: {exc}. Run librarian embed again to carry on from here.", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("Stopped. Run librarian embed again to carry on from here.", file=sys.stderr)
+        return 130
+    print(f"Embedded {count:,} passages.")
+    return 0
+
+
 def search(args, parser):
-    library = open_library()
+    library = open_library(args.model)
     if not library:
         return 1
     hits = library.search(" ".join(args.question), limit=args.limit)
+    if library.meaning_problem:
+        print(library.meaning_problem, file=sys.stderr)
     if args.json:
         print(json.dumps([{"id": h.id, "title": h.title, "heading": h.heading, "source": h.source, "url": h.url,
                            "text": h.text} for h in hits], indent=1))
@@ -116,7 +138,18 @@ def main(argv=None):
     search_parser.add_argument("question", nargs="+")
     search_parser.add_argument("--limit", type=int, default=8, help="how many passages (default 8)")
     search_parser.add_argument("--json", action="store_true", help="print the passages as JSON")
+    search_parser.add_argument("--model", help="the Ollama model that embedded the library")
     search_parser.set_defaults(run=search)
+
+    embed_parser = commands.add_parser("embed", help="index every passage by meaning, with Ollama",
+                                       description="Give every passage that has none yet an EmbeddingGemma vector, "
+                                                   "so searches find passages by meaning as well as by keyword. "
+                                                   "Needs Ollama running. Stop it any time; running it again "
+                                                   "carries on from where it stopped.")
+    embed_parser.add_argument("--model", default=None, help="the Ollama embedding model (default: "
+                                                            "embeddinggemma-2:270m-bf16-text)")
+    embed_parser.add_argument("--batch", type=int, default=32, help="passages per request to Ollama (default 32)")
+    embed_parser.set_defaults(run=embed)
 
     read_parser = commands.add_parser("read", help="print the article a passage comes from",
                                       description="Print the whole article holding a passage, with its source and "
