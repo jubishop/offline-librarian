@@ -81,6 +81,12 @@ survival assistant built on the same idea.
   embedding finishes, and one whenever a monthly update or the page server
   fails and needs them; routine successful updates send nothing. Messages
   can't be sent while the internet is down.
+- **A retrieval test set checks quality.** On 2026-10-25 the user chose a set
+  of about 30 to 40 emergency, medical and how-to questions, each with the
+  articles a good answer must find. It runs offline in minutes and scores
+  search changes, such as how much meaning counts against keywords; answers
+  are spot-checked by reading them. Grading full answers with a judge model,
+  as Survival LLM did, was left out as much more work.
 - **Public code, private library.** The repository is public under MIT. The
   library is never published or committed, since several sources forbid
   redistribution or commercial use.
