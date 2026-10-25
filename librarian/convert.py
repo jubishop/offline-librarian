@@ -1,7 +1,9 @@
 """Turn a Kiwix page or PDF into plain text, keeping headings, lists, numbered steps and table rows.
 
 Adapted from Survival LLM's library/build_library.py (MIT License, Copyright (c) 2026 Ronny Fernandez; see
-LICENSE.survival-llm). Changes: pages with no main content fall back to their whole body instead of trafilatura.
+LICENSE.survival-llm). Changes: pages with no main content fall back to their whole body instead of trafilatura;
+control characters are removed before parsing, since lxml refuses them; and a dropped section's subsections are
+not dropped twice.
 """
 import os
 import re
@@ -11,6 +13,7 @@ import tempfile
 import lxml.html
 
 MIN_CHARS = 300  # shorter pages are navigation, stubs or errors
+CONTROL = re.compile(rb"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")  # lxml won't set text containing these
 
 HEADINGS = {"h1": "# ", "h2": "## ", "h3": "### ", "h4": "#### ", "h5": "#### ", "h6": "#### "}
 BLOCKS = {"p", "div", "section", "article", "ul", "ol", "dl", "dt", "dd", "table", "pre", "blockquote",
@@ -66,7 +69,9 @@ def _heading_level(el):
 def _drop_sections(node):
     """Remove References / External links / See also sections, whatever the markup style."""
     for h in node.xpath(".//h2|.//h3|.//h4"):
-        if h.getparent() is None or " ".join(h.text_content().split()).lower() not in DROP_SECTIONS:
+        if not any(ancestor is node for ancestor in h.iterancestors()):
+            continue  # inside a section dropped already, such as Footnotes under References
+        if " ".join(h.text_content().split()).lower() not in DROP_SECTIONS:
             continue
         anchor = h
         parent = h.getparent()
@@ -167,7 +172,7 @@ def _stack_exchange(doc):
 
 
 def html_to_text(html, kind):
-    doc = lxml.html.fromstring(html)
+    doc = lxml.html.fromstring(CONTROL.sub(b"", html))
     if kind == "se":
         return _stack_exchange(doc)
     if kind == "wiki":

@@ -22,7 +22,8 @@ The library lives in `~/.local/share/offline-librarian`, or in
 articles and their search index in `library.sqlite`. Run `fetch` again to
 resume an interrupted download; each file is checked against its SHA-256
 before it is kept. Run `build` again after fetching newer books; it rebuilds
-only the books whose file changed. `search --json` prints whole passages for
+only the books whose file changed, plus any named with `--rebuild`, such as
+`build --rebuild wikipedia`. `search --json` prints whole passages for
 other programs.
 
 Some of the conversion code is adapted from
