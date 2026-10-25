@@ -5,19 +5,29 @@ of it, by keyword and by meaning with EmbeddingGemma, and a local Ollama model
 answers from the passages it found, showing each source. Use it from the
 terminal, a browser page, or a pi skill.
 
-It needs macOS or Linux and Python 3.14 or later. It is being built in
-stages; see the [design](docs/design.md). So far it downloads the library's
-Kiwix books:
+It needs macOS or Linux, [uv](https://docs.astral.sh/uv/), and `pdftotext`
+from poppler. Run `bin/setup` once to install its Python and packages. It is
+being built in stages; see the [design](docs/design.md). So far it downloads
+the books, builds the library, and searches it by keyword:
 
 ```sh
-bin/librarian fetch          # every book, about 32 GB
-bin/librarian fetch wikem_en_all
+bin/librarian fetch                    # every book, about 32 GB
+bin/librarian build                    # text and search index
+bin/librarian search "how much bleach per gallon of water"
+bin/librarian read 1234                # the article a passage comes from
 ```
 
-Books go to `~/.local/share/offline-librarian/zim`, or to `zim` inside
-`$OFFLINE_LIBRARIAN_HOME` when that is set. Run it again to resume an
-interrupted download: each file is checked against its SHA-256 before it is
-kept.
+The library lives in `~/.local/share/offline-librarian`, or in
+`$OFFLINE_LIBRARIAN_HOME` when that is set: the books in `zim/`, and the
+articles and their search index in `library.sqlite`. Run `fetch` again to
+resume an interrupted download; each file is checked against its SHA-256
+before it is kept. Run `build` again after fetching newer books; it rebuilds
+only the books whose file changed. `search --json` prints whole passages for
+other programs.
+
+Some of the conversion code is adapted from
+[Survival LLM](https://github.com/anonnerdfrenzy/survival-llm), under its
+[MIT License](LICENSE.survival-llm).
 
 Offline Librarian is released under the [MIT License](LICENSE).
 

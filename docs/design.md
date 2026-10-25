@@ -96,11 +96,25 @@ speed, embedding them would take about two days. Faster embedding,
 such as more parallel requests or running EmbeddingGemma through MLX
 directly, has not been measured yet.
 
+## Implementation choices
+
+These were made while building, not by the user, and can change.
+
+- **The library lives in `~/.local/share/offline-librarian`** (or
+  `$OFFLINE_LIBRARIAN_HOME`). The ZIM files stay after the build, so a source
+  can be rebuilt without downloading it again.
+- **Survival LLM's converter, adapted.** Its lxml-based conversion already
+  handles MediaWiki reference sections, Stack Exchange answers and their
+  authors, zimgit's numbered PDFs, translated WikEM pages, and WikiMed
+  articles repeated in Wikipedia. It is used without trafilatura, its
+  heaviest dependency: a page with no main content falls back to its whole
+  body. PDFs go through poppler's `pdftotext`.
+- **One SQLite file.** Articles are stored compressed, passages are offsets
+  into them, and the FTS5 index stores no text of its own. Each source is
+  built in one transaction, and only rebuilt when its file changes.
+
 ## Open questions
 
 - How to make embedding faster, and how much it saves.
-- Where the library lives on disk, and whether the ZIM files are kept after
-  conversion.
 - How to store and search about 10 million vectors quickly: a flat file
   searched with NumPy, or an approximate index.
-- Which HTML-to-text converter to use: the standard library's parser, or lxml.

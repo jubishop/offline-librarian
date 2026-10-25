@@ -1,5 +1,11 @@
 #!/bin/sh
-# Run the librarian command from this checkout. Set OFFLINE_LIBRARIAN_PYTHON to choose the Python.
+# Run the librarian command from this checkout, with the Python that bin/setup installed in .venv.
+# Set OFFLINE_LIBRARIAN_PYTHON to use another one.
 set -eu
 root=$(CDPATH='' cd -- "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)
-PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec "${OFFLINE_LIBRARIAN_PYTHON:-python3}" -B -m librarian "$@"
+python=${OFFLINE_LIBRARIAN_PYTHON:-$root/.venv/bin/python}
+if [ ! -x "$python" ]; then
+  echo "Offline Librarian isn't set up yet: run $root/bin/setup." >&2
+  exit 1
+fi
+PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec "$python" -B -m librarian "$@"

@@ -20,20 +20,19 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        # 3.14 is the minimum; 3.x is the latest stable release.
-        python-version: ['3.14', '3.x']
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python-version }}
-          check-latest: true
-      - name: Install ShellCheck
-        run: sudo apt-get update && sudo apt-get install --yes shellcheck
+      # setup-uv publishes only exact version tags (v10.3.2 and so on), so install the latest uv directly.
+      # uv then installs the Python that .python-version names; see docs/development-workflow.md for its pin.
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Install ShellCheck and pdftotext
+        run: sudo apt-get update && sudo apt-get install --yes shellcheck poppler-utils
+      - name: Set up the application
+        run: bin/setup-application
       - name: Check repository
         run: bin/check --full

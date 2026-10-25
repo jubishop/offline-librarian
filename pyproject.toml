@@ -3,7 +3,10 @@ name = "offline-librarian"
 version = "0.1.0"
 description = "Answer questions offline from a local Kiwix library."
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+  "libzim>=3.13,<4",
+  "lxml>=6.1,<7",
+]
 
 [tool.uv]
 package = false
