@@ -24,8 +24,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      # uv installs the Python that .python-version names; see docs/development-workflow.md for its pin.
-      - uses: astral-sh/setup-uv@v10
+      # setup-uv publishes only exact version tags (v10.3.2 and so on), so install the latest uv directly.
+      # uv then installs the Python that .python-version names; see docs/development-workflow.md for its pin.
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Install ShellCheck and pdftotext
         run: sudo apt-get update && sudo apt-get install --yes shellcheck poppler-utils
       - name: Set up the application
