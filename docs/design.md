@@ -69,6 +69,28 @@ survival assistant built on the same idea.
   library is never published or committed, since several sources forbid
   redistribution or commercial use.
 
+## The browser page
+
+The user chose these on 2026-10-25:
+
+- **It asks, answers and cites.** A question streams an answer with its cited
+  passages, and each passage opens its whole article.
+- **Follow-up questions.** The conversation is kept, so a follow-up is
+  answered with the earlier context, and every answer still searches first.
+- **Search without the AI.** A plain search lists matching passages with no
+  model, for when Ollama is off or to save battery.
+- **One saved history on the Mac**, shared by every device that opens the
+  page, so a question asked on a phone shows up on the laptop. Anyone on the
+  network can read it; the user chose that over keeping history in each
+  browser.
+- **Open to the home network and Tailscale, with no password.** The user
+  doesn't mind anyone on their Wi-Fi or tailnet using it. The server answers
+  only requests addressed to the Mac's own names and addresses (localhost, its
+  LAN and Tailscale addresses, `<name>.local`, its Tailscale name), so a web
+  page can't reach it through DNS rebinding; this needs no password.
+- **Nothing from the internet.** The page loads no scripts, fonts or styles
+  from elsewhere, so it works with the internet down.
+
 ## Sources
 
 Survival LLM's full personal build, as listed in its `library/fetch_zims.py`,
