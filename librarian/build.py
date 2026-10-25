@@ -46,7 +46,7 @@ def _convert(bounds):
             if text and len(text) >= convert.MIN_CHARS:
                 out.append((convert.clean_title(title), entry.path, *passages.split_passages(text)))
         except Exception as exc:  # one bad page must not stop a million-page build
-            problems.append(f"entry {i} ({exc})")
+            problems.append(f"entry {i} ({type(exc).__name__}: {exc})")
     return out, problems
 
 
@@ -111,9 +111,12 @@ def _build_source(db, source, filename, path, workers, log):
     log(f"{source.key}: done, {count:,} articles in {time.monotonic() - started:.0f}s")
 
 
-def build(home, workers=None, log=print):
-    """Build every downloaded book into home/library.sqlite that isn't built from its current file yet.
-    Returns the labels of the books that aren't downloaded."""
+def build(home, workers=None, rebuild=(), log=print):
+    """Build every downloaded book into home/library.sqlite that isn't built from its current file yet, and the
+    sources whose keys are in rebuild in any case. Returns the labels of the books that aren't downloaded."""
+    unknown = sorted(set(rebuild) - {source.key for source in sources.SOURCES})
+    if unknown:
+        raise ValueError(f"not a library source: {', '.join(unknown)}")
     zim = os.path.join(home, "zim")
     with open(os.path.join(zim, "manifest.json")) as f:
         manifest = json.load(f)
@@ -132,7 +135,7 @@ def build(home, workers=None, log=print):
                     missing.append(kiwix.label(source.name, source.flavour))
                     continue
                 row = db.execute("SELECT done, origin FROM sources WHERE key=?", (source.key,)).fetchone()
-                if row and row[0] and row[1] == book["file"]:
+                if row and row[0] and row[1] == book["file"] and source.key not in rebuild:
                     log(f"{source.key}: already built")
                     continue
                 _build_source(db, source, book["file"], os.path.join(zim, book["file"]), workers, log)

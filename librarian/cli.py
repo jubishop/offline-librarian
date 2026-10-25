@@ -53,11 +53,12 @@ def open_library(model=None):
 def build(args, parser):
     from librarian import build as builder
     try:
-        missing = builder.build(home(), workers=args.workers, log=lambda line: print(line, flush=True))
+        missing = builder.build(home(), workers=args.workers, rebuild=args.rebuild,
+                                log=lambda line: print(line, flush=True))
     except FileNotFoundError:
         print("No books are downloaded yet. Run librarian fetch first.", file=sys.stderr)
         return 1
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         print(f"Couldn't build: {exc}.", file=sys.stderr)
         return 1
     if missing:
@@ -131,6 +132,8 @@ def main(argv=None):
                                        description="Convert the downloaded books to text and index them. Books "
                                                    "already built from their current file are skipped.")
     build_parser.add_argument("--workers", type=int, help="processes converting pages (default: all but two cores)")
+    build_parser.add_argument("--rebuild", nargs="+", default=[], metavar="SOURCE",
+                              help="build these sources again, such as wikipedia or se-cooking, after a fix")
     build_parser.set_defaults(run=build)
 
     search_parser = commands.add_parser("search", help="find the passages that best match a question",
