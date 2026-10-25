@@ -42,9 +42,12 @@ take precedence over this block and the foundation pages wherever they differ.
 
 Offline Librarian answers questions offline from a local Kiwix library; see
 the [README](README.md) and the [design](docs/design.md). Its command is
-`bin/librarian`, and `bin/check-application` runs its tests; the
+`bin/librarian`, `bin/setup` installs it into `.venv`, and
+`bin/check-application` runs its tests; the
 [development workflow](docs/development-workflow.md) has the details.
 
 - Never commit library data, downloads, or indexes: several sources forbid
   redistribution.
 - Tests never touch the internet; fake web servers stand in for Kiwix.
+- Code adapted from Survival LLM keeps its notice and points to
+  `LICENSE.survival-llm`.

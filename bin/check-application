@@ -3,4 +3,9 @@
 set -eu
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
-"${OFFLINE_LIBRARIAN_PYTHON:-python3}" -B -W error::ResourceWarning -m unittest discover -s tests
+python=${OFFLINE_LIBRARIAN_PYTHON:-.venv/bin/python}
+if [ ! -x "$python" ]; then
+  echo "Offline Librarian isn't set up yet: run bin/setup." >&2
+  exit 1
+fi
+"$python" -B -W error::ResourceWarning -m unittest discover -s tests

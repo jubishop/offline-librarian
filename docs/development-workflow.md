@@ -16,8 +16,9 @@ bin/check --full
 ```
 
 Setup needs Git and Python 3.9 or later, and checks also need ShellCheck.
-`bin/setup` then runs an executable `bin/setup-application`, when present, for
-application dependencies such as `npm ci`.
+`bin/setup` then runs `bin/setup-application`, which needs
+[uv](https://docs.astral.sh/uv/) and `pdftotext` (poppler) and installs the
+application's Python and packages into `.venv` from `uv.lock`.
 QMD and direnv are optional; setup reports skipped features. Install td and
 run `td init` as described in [task tracking](foundation/task-tracking.md).
 Create `.envrc` only when the project needs environment settings, and review
@@ -27,25 +28,29 @@ it before running `direnv allow`; search does not need it.
 
 Follow the [check schedule](foundation/engineering-policy.md#checks).
 `bin/check --full` runs `bin/check-application` after the foundation checks.
-It runs the unit tests in `tests/` with the standard library's `unittest`,
-treating unclosed resources as errors:
+It runs the unit tests in `tests/` with the standard library's `unittest` in
+`.venv`, treating unclosed resources as errors:
 
 ```sh
 bin/check-application
-python3 -B -m unittest tests.test_kiwix_fetch   # one test file
+.venv/bin/python -B -m unittest discover -s tests -p 'test_kiwix*'   # some files
 ```
 
-Tests that download run against a local web server, never the internet.
+Tests that download run against a local web server, never the internet. Tests
+that build write small books with libzim and PDFs by hand, and read the PDFs
+with the real `pdftotext`. CI installs `poppler-utils` for it.
 
 ## Runtime and toolchain versions
 
 The application requires Python 3.14 or later, declared in `pyproject.toml`
-and checked by `librarian/__main__.py` before anything runs.
-`.python-version` asks for the newest Python that meets that minimum. CI tests
-3.14 and the latest stable release. `bin/librarian` and
-`bin/check-application` run `python3`, or the interpreter in
-`OFFLINE_LIBRARIAN_PYTHON`. Foundation commands keep their Python 3.9 or later
-requirement. See the
+and checked by `librarian/__main__.py` before anything runs. `.python-version`
+pins 3.14 rather than the newest Python: libzim 3.13.1, which reads the
+Kiwix books, publishes wheels only up to 3.14 (checked on 2026-10-25). When
+libzim publishes wheels for a newer Python, change `.python-version` to
+`>=3.14` again. CI uses that file through uv, so it tests 3.14 until then.
+`bin/librarian` and `bin/check-application` run `.venv/bin/python`, or the
+interpreter in `OFFLINE_LIBRARIAN_PYTHON`. Foundation commands keep their
+Python 3.9 or later requirement. See the
 [version policy](foundation/engineering-policy.md#runtime-and-toolchain-versions).
 
 ## Deployment
