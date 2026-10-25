@@ -76,6 +76,11 @@ survival assistant built on the same idea.
   id, so keying by id would re-embed whole books on each monthly update, about
   two days for Wikipedia; keyed by text, only new or edited passages are
   embedded.
+- **Pushover notifications on finish and failure.** On 2026-10-25 the user
+  chose, as in their Stories index, one Pushover message when the first full
+  embedding finishes, and one whenever a monthly update or the page server
+  fails and needs them; routine successful updates send nothing. Messages
+  can't be sent while the internet is down.
 - **Public code, private library.** The repository is public under MIT. The
   library is never published or committed, since several sources forbid
   redistribution or commercial use.
