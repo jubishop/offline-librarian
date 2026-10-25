@@ -65,6 +65,11 @@ survival assistant built on the same idea.
   and WikiMed articles repeated in Wikipedia. It is used without trafilatura,
   its heaviest dependency: a page with no main content falls back to its whole
   body. PDFs go through poppler's `pdftotext`.
+- **Monthly updates, automatically.** On 2026-10-25 the user chose a monthly
+  job, at Background priority, that fetches newer Kiwix editions, rebuilds
+  only those books, embeds what changed, and deletes the superseded files, so
+  old copies don't fill the disk. The alternatives were updating on request
+  or freezing the library.
 - **Public code, private library.** The repository is public under MIT. The
   library is never published or committed, since several sources forbid
   redistribution or commercial use.
