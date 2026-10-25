@@ -84,9 +84,11 @@ survival assistant built on the same idea.
 - **A retrieval test set checks quality.** On 2026-10-25 the user chose a set
   of about 30 to 40 emergency, medical and how-to questions, each with the
   articles a good answer must find. It runs offline in minutes and scores
-  search changes, such as how much meaning counts against keywords; answers
-  are spot-checked by reading them. Grading full answers with a judge model,
-  as Survival LLM did, was left out as much more work.
+  search changes, such as how much meaning counts against keywords. Claude
+  (Opus, at high effort) spot-checks answers by reading them during
+  development; the user asked not to be the judge, as too much work. Grading
+  every answer with a judge model, as Survival LLM did, was left out as much
+  more work.
 - **Public code, private library.** The repository is public under MIT. The
   library is never published or committed, since several sources forbid
   redistribution or commercial use.
