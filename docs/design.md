@@ -91,8 +91,11 @@ copyright notice.
    (EmbeddingGemma, cosine similarity) for the question, and merge the two
    rankings.
 2. Give the model the best passages, numbered, with their titles and sources.
-3. Have it answer from those passages and cite them by number, saying plainly
-   when the passages don't cover the question.
+3. Have it answer from those passages and cite them by number. When they
+   don't cover the question, it says "The library doesn't cover this," then
+   gives its best general answer, labeled as not from the library. The user
+   chose this on 2026-10-25 over answering only from the library or asking
+   first: in an emergency, some guidance beats none.
 4. Show the answer with each cited passage, and let the reader open the full
    article.
 
