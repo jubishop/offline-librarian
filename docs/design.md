@@ -70,6 +70,12 @@ survival assistant built on the same idea.
   only those books, embeds what changed, and deletes the superseded files, so
   old copies don't fill the disk. The alternatives were updating on request
   or freezing the library.
+- **Vectors are keyed by passage text.** On 2026-10-25 the user chose to key
+  each vector by a hash of the text it embeds, as their Stories index does,
+  instead of by passage id. A new edition of a book gives every passage a new
+  id, so keying by id would re-embed whole books on each monthly update, about
+  two days for Wikipedia; keyed by text, only new or edited passages are
+  embedded.
 - **Public code, private library.** The repository is public under MIT. The
   library is never published or committed, since several sources forbid
   redistribution or commercial use.
