@@ -16,8 +16,9 @@ Run this with the question in plain words:
 librarian search --json --limit 8 "QUESTION"
 ```
 
-It prints the best passages as JSON, one per article: `id`, `title`,
-`heading`, `source`, `url` and `text`. It searches by keyword and by meaning.
+It prints the best passages as JSON, one per article: `id`, `title` (the
+article), `heading` (the section within it), `source`, `url` (the article's
+address, sometimes empty) and `text`. It searches by keyword and by meaning.
 
 - If the passages don't answer the question, search again with other words:
   the symptom instead of the condition, a common name instead of a technical
@@ -33,11 +34,18 @@ It prints the best passages as JSON, one per article: `id`, `title`,
   passages say to call emergency services, say that first.
 - Use only facts from the passages you read. Give doses, amounts, times and
   distances exactly as the passage states them. Never invent a number.
-- After each fact, name its source in brackets, like
-  `[Hypothermia, WikEM emergency medicine]`.
-- End with a **Sources** list: each article you used, with its source and
-  its URL when it has one.
-- If the passages disagree, say so and give both.
+- After each fact, name the passage's `title` and `source` in brackets, like
+  `[Hypothermia, WikEM emergency medicine]`. Copy them from the JSON; the
+  `heading` is only a section, not the article's name.
+- If you add anything not in a passage, mark it `(from memory)` instead of a
+  source. Never write a source you did not read.
+- End with a **Sources** list: each article you cited, with its `source` and
+  the `url` from that same passage, when it has one.
+- On safety, follow the official and clinical sources (MedlinePlus, CDC,
+  Ready.gov, FEMA, NHS, WikEM, WikiMed, the military and WHO manuals) over
+  Q&A sites, wikiHow and general Wikipedia. Don't repeat exceptions that
+  weaken a safety rule, such as "if you must" run an engine indoors.
+- If official sources disagree, say so and give both, with their sources.
 
 ## When the library has nothing
 
