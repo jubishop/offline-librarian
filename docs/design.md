@@ -47,6 +47,11 @@ survival assistant built on the same idea.
   can't lower the priority of Ollama's GPU work, so yielding to chat models is
   what protects interactive use. The tradeoff is a longer build, depending on
   how much the user chats.
+- **Builds run at Background priority too.** On 2026-10-25 the user chose to
+  run `librarian build` at macOS's Background priority, on the efficiency
+  cores with throttled disk access, so a build isn't noticeable. The tradeoff
+  is a slower full build, estimated at several times the hour it takes at
+  normal priority; full builds are rare.
 - **Public code, private library.** The repository is public under MIT. The
   library is never published or committed, since several sources forbid
   redistribution or commercial use.
