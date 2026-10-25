@@ -179,6 +179,7 @@ them.
 | Passages per article | 2,029,972 passages for 497,236 articles | Survival LLM's Essentials library, 2026-10-25 |
 | The built library | 13,800,580 passages in 1,362,534 articles from 28 books, 14 GB | `librarian build`, 2026-10-25 |
 | Embedding under load | 33 passages a second while a build ran | 54,655 trial passages, 2026-10-25 |
+| Repeated text | 48,312 distinct inputs in 54,655 passages (12% repeats) | WikEM, NHS medicines and Ready.gov, 2026-10-25 |
 
 The built library has 13.8 million passages, more than the 10 million
 estimated from Survival LLM's downloads. At about 55 a second, embedding them
@@ -197,9 +198,22 @@ These were made while building, not by the user, and can change.
 - **One SQLite file.** Articles are stored compressed, passages are offsets
   into them, and the FTS5 index stores no text of its own. Each source is
   built in one transaction, and only rebuilt when its file changes.
+- **Vectors in a flat file, searched with NumPy.** Each vector's 768
+  EmbeddingGemma dimensions are a float16 row in `vectors.f16`, and
+  `vectors.sqlite` maps the 16-byte BLAKE2b hash of each embedded input to its
+  row; each passage in `library.sqlite` records the hash of its input. A row
+  counts only once it is recorded, so an interrupted run resumes cleanly. A
+  search compares the question with every row: about 0.6 seconds for 10
+  million rows on the M5 Pro (2 million measured, 2026-10-25), so no
+  approximate index or extra dependency is needed. Keyword and meaning
+  rankings are merged by reciprocal rank fusion (k = 60).
+- **Ollama makes the vectors**, with EmbeddingGemma's retrieval prompts
+  (`title: … | text: …` for passages, `task: search result | query: …` for
+  questions). It already runs the model on the GPU through MLX.
 
 ## Open questions
 
-- How to make embedding faster, and how much it saves.
-- How to store and search about 10 million vectors quickly: a flat file
-  searched with NumPy, or an approximate index.
+- How to make embedding faster. Through Ollama it reaches about 12,000 tokens
+  a second; larger batches and parallel requests didn't help (2026-10-25).
+  Running EmbeddingGemma with MLX directly might, at the cost of new
+  dependencies and Hugging Face's gated weights.

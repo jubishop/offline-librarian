@@ -1,9 +1,10 @@
 """The library: one SQLite file holding every article, its passages and a full-text index over them.
 
 Articles are stored compressed, and passages are offsets into their article's text. The full-text index (FTS5,
-BM25) holds no text of its own. Searching follows Survival LLM's library/search.py (MIT License, Copyright (c)
-2026 Ronny Fernandez; see LICENSE.survival-llm): every word first, any word when that finds too little, sources
-weighted by how authoritative they are, and one passage per article.
+BM25) holds no text of its own. Keyword search follows Survival LLM's library/search.py (MIT License, Copyright
+(c) 2026 Ronny Fernandez; see LICENSE.survival-llm): every word first, any word when that finds too little, and
+sources weighted by how authoritative they are. When the passages also have vectors (librarian/meaning.py), the
+keyword and meaning rankings are merged by reciprocal rank fusion. Results keep one passage per article.
 """
 import re
 import sqlite3
@@ -16,7 +17,8 @@ CREATE TABLE IF NOT EXISTS sources(id INTEGER PRIMARY KEY, key TEXT UNIQUE, labe
 CREATE TABLE IF NOT EXISTS articles(id INTEGER PRIMARY KEY, source_id INT, title TEXT, url TEXT, text BLOB);
 CREATE INDEX IF NOT EXISTS articles_title ON articles(title COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS articles_source ON articles(source_id);
-CREATE TABLE IF NOT EXISTS passages(id INTEGER PRIMARY KEY, article_id INT, start INT, end INT, heading TEXT);
+CREATE TABLE IF NOT EXISTS passages(id INTEGER PRIMARY KEY, article_id INT, start INT, end INT, heading TEXT,
+                                    hash BLOB);
 CREATE INDEX IF NOT EXISTS passages_article ON passages(article_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(title, body, content='', contentless_delete=1,
                                                   tokenize='porter unicode61 remove_diacritics 2');
@@ -57,6 +59,9 @@ def connect(path, write=False):
         return sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
     db = sqlite3.connect(path, isolation_level=None)
     db.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;" + SCHEMA)
+    if "hash" not in [column[1] for column in db.execute("PRAGMA table_info(passages)")]:
+        db.execute("ALTER TABLE passages ADD COLUMN hash BLOB")  # libraries built before vectors were keyed by text
+    db.execute("CREATE INDEX IF NOT EXISTS passages_hash ON passages(hash)")
     return db
 
 
@@ -65,9 +70,14 @@ def query_words(query):
     return [w for w in re.findall(r"[\w']+", query.lower()) if w not in STOPWORDS and len(w) > 1][:12]
 
 
+FUSION_K = 60  # reciprocal rank fusion: each ranking adds 1 / (FUSION_K + rank)
+
+
 class Library:
-    def __init__(self, path):
+    def __init__(self, path, meaning=None):
         self.db = connect(path)
+        self.meaning = meaning
+        self.meaning_problem = None  # why the last search used keywords only, when meaning search was expected
 
     def close(self):
         self.db.close()
@@ -116,15 +126,47 @@ class Library:
         return [Passage(r[0], r[1], r[2], r[3], r[4], r[5], self._text(r[6])[r[7]:r[8]]) for i in ids
                 if (r := rows.get(i))]
 
+    def ranking(self, query):
+        """Passage ids best first, by keyword and, when there are vectors, by meaning."""
+        rankings = [[pid for pid, _ in self.keyword_ranking(query)]]
+        self.meaning_problem = None
+        if self.meaning is not None and self.meaning.available():
+            from librarian.meaning import MeaningUnavailable
+            try:
+                rankings.append(self._passages_with(h for h, _ in self.meaning.ranking(query)))
+            except MeaningUnavailable as exc:
+                self.meaning_problem = f"Searched by keyword only: {exc}"
+        if len(rankings) == 1:
+            return rankings[0]
+        fused = {}
+        for ranking in rankings:
+            for rank, pid in enumerate(ranking):
+                fused[pid] = fused.get(pid, 0.0) + 1.0 / (FUSION_K + rank)
+        return sorted(fused, key=fused.get, reverse=True)
+
+    def _passages_with(self, hashes):
+        """Passage ids whose embedding inputs have these hashes, in the hashes' order; hashes no passage has any
+        more (from replaced editions) drop out."""
+        hashes = list(hashes)
+        found = {}
+        for at in range(0, len(hashes), 500):
+            part = hashes[at:at + 500]
+            for pid, h in self.db.execute(
+                    f"SELECT id, hash FROM passages WHERE hash IN ({','.join('?' * len(part))})", part):
+                found.setdefault(h, []).append(pid)
+        return [pid for h in hashes for pid in found.get(h, [])]
+
     def search(self, query, limit=8):
         """The best passages for a question, at most one per article."""
-        ranking = self.keyword_ranking(query)
-        article_of = dict(self.db.execute(
-            f"SELECT id, article_id FROM passages WHERE id IN ({','.join('?' * len(ranking))})",
-            [pid for pid, _ in ranking])) if ranking else {}
+        ranking = self.ranking(query)
+        article_of = {}
+        for at in range(0, len(ranking), 500):  # passages of rebuilt books are gone; they drop out here
+            ids = ranking[at:at + 500]
+            article_of.update(self.db.execute(
+                f"SELECT id, article_id FROM passages WHERE id IN ({','.join('?' * len(ids))})", ids))
         chosen, seen = [], set()
-        for pid, _ in ranking:
-            if article_of[pid] not in seen:
+        for pid in ranking:
+            if pid in article_of and article_of[pid] not in seen:
                 seen.add(article_of[pid])
                 chosen.append(pid)
                 if len(chosen) == limit:
