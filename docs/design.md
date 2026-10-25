@@ -38,6 +38,11 @@ survival assistant built on the same idea.
 - **Three ways in.** A terminal command, a page in the browser, and a pi
   skill, all on one shared search-and-answer core. Answers default to
   `qwen3.8:27b-mlx`, the default model of the user's pi setup.
+- **Thinking matches pi.** On 2026-10-25 the user chose to have `librarian ask`
+  and the browser page use the thinking level from their pi settings
+  (`defaultThinkingLevel` in `~/.pi/agent/settings.json`, medium at the time),
+  so both behave alike, rather than defaulting thinking off for speed. The
+  tradeoff is slower answers, roughly 15 to 40 seconds more with Qwen 27B.
 - **Embedding shares the Mac the way Stories' index does.** On 2026-10-25 the
   user chose to run `librarian embed` the way their Stories project runs its
   embedding index: as a per-user launch agent with the Background process
