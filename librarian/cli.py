@@ -176,6 +176,63 @@ def ask(args, parser):
     return 1 if failed else 0
 
 
+def page_addresses(port):
+    """Addresses a browser on this Mac or the home network can open the page at."""
+    from librarian import server
+    names = server.allowed_hosts()
+    shown = [f"http://localhost:{port}/"]
+    shown += sorted(f"http://{n}:{port}/" for n in names if n.endswith(".local"))
+    shown += sorted(f"http://{n}:{port}/" for n in names
+                    if n.count(".") == 3 and not n.startswith(("127.", "169.254.")) and n.replace(".", "").isdigit())
+    return shown
+
+
+def serve(args, parser):
+    import signal
+    from librarian import agent, notify, server
+    if args.action == "install":
+        try:
+            path = agent.install_server(home(), args.port)
+        except RuntimeError as exc:
+            print(f"Couldn't install the page server: {exc}.", file=sys.stderr)
+            return 1
+        print(f"Installed {path}. The page is always running at:")
+        for address in page_addresses(args.port):
+            print(f"  {address}")
+        return 0
+    if args.action == "uninstall":
+        agent.uninstall(agent.SERVER)
+        print("Removed the page server. Saved conversations are kept.")
+        return 0
+    if args.action == "status":
+        running = agent.running(agent.SERVER)
+        print(f"page server: {'running' if running else 'not installed'}")
+        if running:
+            for address in page_addresses(args.port):
+                print(f"  {address}")
+        return 0
+    page = server.Server(home(), port=args.port, bind=args.bind, notify=notify.pushover(),
+                         log=lambda line: print(line, flush=True))
+    try:
+        page.start()
+    except OSError as exc:
+        print(f"Couldn't start the page server on port {args.port}: {exc}.", file=sys.stderr)
+        return 1
+
+    def stop(signum, frame):
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, stop)  # launchd stops agents with SIGTERM: a clean stop, not a crash
+    print(f"Serving the page at http://{'localhost' if args.bind in ('0.0.0.0', '127.0.0.1') else args.bind}:"
+          f"{page.port}/", flush=True)
+    try:
+        signal.pause()
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        page.stop()
+    return 0
+
+
 def read(args, parser):
     library = open_library()
     if not library:
@@ -236,6 +293,16 @@ def main(argv=None):
     ask_parser.add_argument("--model", help="the Ollama chat model (default: pi's default model)")
     ask_parser.add_argument("--think", choices=["on", "off"], help="think before answering (default: as in pi)")
     ask_parser.set_defaults(run=ask)
+
+    serve_parser = commands.add_parser(
+        "serve", help="run the browser page",
+        description="Run the browser page on every network this Mac is on (the home Wi-Fi, and Tailscale when it "
+                    "is connected), with no password. ACTION is run (the default: serve here until stopped), "
+                    "install (keep it always running, as a launch agent), uninstall or status.")
+    serve_parser.add_argument("action", nargs="?", default="run", choices=["run", "install", "uninstall", "status"])
+    serve_parser.add_argument("--port", type=int, default=8740, help="the port to listen on (default 8740)")
+    serve_parser.add_argument("--bind", default="0.0.0.0", help="the address to listen on (default: all of them)")
+    serve_parser.set_defaults(run=serve)
 
     read_parser = commands.add_parser("read", help="print the article a passage comes from",
                                       description="Print the whole article holding a passage, with its source and "

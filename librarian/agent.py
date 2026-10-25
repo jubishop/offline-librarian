@@ -1,70 +1,83 @@
-"""The launch agent that keeps the meaning index current in the background, like the user's Stories index.
+"""The launch agents that run Offline Librarian in the background: the embedding worker, which keeps the meaning
+index current at the Background process type (like the user's Stories index), and the browser page's server.
 
-It runs `librarian embed worker` with the Background process type, starts at login, and restarts after a crash.
-Install it from the permanent checkout: the agent runs the code it was installed from.
+Each starts at login and restarts after a crash. Install them from the permanent checkout: an agent runs the code
+it was installed from.
 """
 import os
 import plistlib
 import subprocess
 import time
 
-LABEL = "org.jubishop.offline-librarian.embed"
+EMBED = "org.jubishop.offline-librarian.embed"
+SERVER = "org.jubishop.offline-librarian.server"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def plist_path():
-    return os.path.join(os.path.expanduser("~"), "Library", "LaunchAgents", f"{LABEL}.plist")
+def plist_path(label=EMBED):
+    return os.path.join(os.path.expanduser("~"), "Library", "LaunchAgents", f"{label}.plist")
 
 
 def _domain():
     return f"gui/{os.getuid()}"
 
 
-def install(home, model):
-    """Write the agent and (re)start it. Returns the plist's path."""
-    environment = {"OFFLINE_LIBRARIAN_HOME": home, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"}
+def _install(label, arguments, home, process_type, log_name):
+    environment = {"OFFLINE_LIBRARIAN_HOME": home, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                   "HOME": os.path.expanduser("~")}
     if os.environ.get("OLLAMA_HOST"):
         environment["OLLAMA_HOST"] = os.environ["OLLAMA_HOST"]
     agent = {
-        "Label": LABEL,
-        "ProgramArguments": [os.path.join(ROOT, "bin", "librarian"), "embed", "worker", "--model", model],
+        "Label": label,
+        "ProgramArguments": [os.path.join(ROOT, "bin", "librarian"), *arguments],
         "EnvironmentVariables": environment,
-        "ProcessType": "Background",
+        "ProcessType": process_type,
         "RunAtLoad": True,
         "KeepAlive": True,
-        "ThrottleInterval": 60,
+        "ThrottleInterval": 60 if process_type == "Background" else 30,
         "WorkingDirectory": home,
-        "StandardOutPath": os.path.join(home, "embed.log"),
-        "StandardErrorPath": os.path.join(home, "embed-error.log"),
+        "StandardOutPath": os.path.join(home, f"{log_name}.log"),
+        "StandardErrorPath": os.path.join(home, f"{log_name}-error.log"),
     }
-    os.makedirs(os.path.dirname(plist_path()), exist_ok=True)
-    with open(plist_path(), "wb") as f:
+    os.makedirs(os.path.dirname(plist_path(label)), exist_ok=True)
+    with open(plist_path(label), "wb") as f:
         plistlib.dump(agent, f)
-    _stop()  # an older copy, if any
+    _stop(label)  # an older copy, if any
     for attempt in range(5):
-        result = subprocess.run(["launchctl", "bootstrap", _domain(), plist_path()], capture_output=True, text=True)
+        result = subprocess.run(["launchctl", "bootstrap", _domain(), plist_path(label)], capture_output=True,
+                                text=True)
         if result.returncode == 0:
-            return plist_path()
+            return plist_path(label)
         time.sleep(1)  # launchd can still be removing the old job
-    raise RuntimeError(f"launchctl couldn't start the worker (exit {result.returncode}: "
+    raise RuntimeError(f"launchctl couldn't start {label} (exit {result.returncode}: "
                        f"{(result.stderr or result.stdout).strip()})")
 
 
-def _stop(timeout=15):
-    """Stop the agent and wait until launchd has removed it: bootout returns before the job is gone, and starting a
+def install(home, model):
+    """Install (or reinstall) the embedding worker. Returns the plist's path."""
+    return _install(EMBED, ["embed", "worker", "--model", model], home, "Background", "embed")
+
+
+def install_server(home, port):
+    """Install (or reinstall) the page server, listening on port on every network the Mac is on."""
+    return _install(SERVER, ["serve", "--port", str(port)], home, "Standard", "server")
+
+
+def _stop(label, timeout=15):
+    """Stop an agent and wait until launchd has removed it: bootout returns before the job is gone, and starting a
     new copy before then fails with 5 (Input/output error)."""
-    subprocess.run(["launchctl", "bootout", f"{_domain()}/{LABEL}"], capture_output=True)
+    subprocess.run(["launchctl", "bootout", f"{_domain()}/{label}"], capture_output=True)
     deadline = time.monotonic() + timeout
-    while running() and time.monotonic() < deadline:
+    while running(label) and time.monotonic() < deadline:
         time.sleep(0.2)
 
 
-def uninstall():
-    _stop()
-    if os.path.exists(plist_path()):
-        os.remove(plist_path())
+def uninstall(label=EMBED):
+    _stop(label)
+    if os.path.exists(plist_path(label)):
+        os.remove(plist_path(label))
 
 
-def running():
+def running(label=EMBED):
     """Whether launchd has the agent loaded."""
-    return subprocess.run(["launchctl", "print", f"{_domain()}/{LABEL}"], capture_output=True).returncode == 0
+    return subprocess.run(["launchctl", "print", f"{_domain()}/{label}"], capture_output=True).returncode == 0
