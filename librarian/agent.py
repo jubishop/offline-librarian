@@ -6,6 +6,7 @@ Install it from the permanent checkout: the agent runs the code it was installed
 import os
 import plistlib
 import subprocess
+import time
 
 LABEL = "org.jubishop.offline-librarian.embed"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,13 +40,27 @@ def install(home, model):
     os.makedirs(os.path.dirname(plist_path()), exist_ok=True)
     with open(plist_path(), "wb") as f:
         plistlib.dump(agent, f)
-    subprocess.run(["launchctl", "bootout", f"{_domain()}/{LABEL}"], capture_output=True)  # an older copy, if any
-    subprocess.run(["launchctl", "bootstrap", _domain(), plist_path()], check=True, capture_output=True, text=True)
-    return plist_path()
+    _stop()  # an older copy, if any
+    for attempt in range(5):
+        result = subprocess.run(["launchctl", "bootstrap", _domain(), plist_path()], capture_output=True, text=True)
+        if result.returncode == 0:
+            return plist_path()
+        time.sleep(1)  # launchd can still be removing the old job
+    raise RuntimeError(f"launchctl couldn't start the worker (exit {result.returncode}: "
+                       f"{(result.stderr or result.stdout).strip()})")
+
+
+def _stop(timeout=15):
+    """Stop the agent and wait until launchd has removed it: bootout returns before the job is gone, and starting a
+    new copy before then fails with 5 (Input/output error)."""
+    subprocess.run(["launchctl", "bootout", f"{_domain()}/{LABEL}"], capture_output=True)
+    deadline = time.monotonic() + timeout
+    while running() and time.monotonic() < deadline:
+        time.sleep(0.2)
 
 
 def uninstall():
-    subprocess.run(["launchctl", "bootout", f"{_domain()}/{LABEL}"], capture_output=True)
+    _stop()
     if os.path.exists(plist_path()):
         os.remove(plist_path())
 
