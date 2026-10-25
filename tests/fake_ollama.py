@@ -29,8 +29,9 @@ class FakeOllama:
     requests fail with 500, then they work again. loaded: lists of loaded model names, one per /api/ps call; the
     last one repeats."""
 
-    def __init__(self, fail_after=None, failures=0, loaded=None, refuse=()):
-        self.requests, self.calls = [], []
+    def __init__(self, fail_after=None, failures=0, loaded=None, refuse=(), answer="", thinking=""):
+        self.requests, self.calls, self.chats = [], [], []
+        self.answer, self.thinking = answer, thinking  # what /api/chat streams back, a few characters at a time
         self.fail_after, self.failures, self.loaded, self.refuse = fail_after, failures, list(loaded or [[]]), refuse
         fake = self
 
@@ -53,8 +54,26 @@ class FakeOllama:
                 names = fake.loaded.pop(0) if len(fake.loaded) > 1 else fake.loaded[0]
                 self.reply(200, {"models": [{"name": name, "model": name} for name in names]})
 
+            def chat(self, body):
+                fake.chats.append(body)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/x-ndjson")
+                self.end_headers()
+                chunks = [("thinking", fake.thinking[i:i + 7]) for i in range(0, len(fake.thinking), 7)]
+                chunks += [("content", fake.answer[i:i + 5]) for i in range(0, len(fake.answer), 5)]
+                for field, text in chunks:
+                    message = {"role": "assistant", "content": text if field == "content" else ""}
+                    if field == "thinking":
+                        message["thinking"] = text
+                    self.wfile.write(json.dumps({"model": body["model"], "message": message, "done": False}).encode()
+                                     + b"\n")
+                self.wfile.write(json.dumps({"model": body["model"], "message": {"role": "assistant", "content": ""},
+                                             "done": True, "done_reason": "stop"}).encode() + b"\n")
+
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if self.path == "/api/chat":
+                    return self.chat(body)
                 fake.calls.append("embed")
                 fake.requests.append(body)
                 inputs = body["input"] if isinstance(body["input"], list) else [body["input"]]

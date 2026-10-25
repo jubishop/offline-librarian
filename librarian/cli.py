@@ -145,6 +145,37 @@ def search(args, parser):
     return 0
 
 
+def ask(args, parser):
+    from librarian import answer
+    library = open_library()
+    if not library:
+        return 1
+    model, think = answer.pi_settings()
+    chat = answer.Chat(model=args.model or model, think=think if args.think is None else args.think == "on")
+    passages, failed = [], False
+    for event in answer.ask(library, " ".join(args.question), chat=chat):
+        if event["type"] == "passages":
+            passages = event["passages"]
+            if event.get("search_problem"):
+                print(event["search_problem"], file=sys.stderr)
+        elif event["type"] == "thinking":
+            print("Thinking…", file=sys.stderr, flush=True)
+        elif event["type"] == "text":
+            print(event["text"], end="", flush=True)
+        elif event["type"] == "error":
+            print(f"\nCouldn't answer: {event['message']}.", file=sys.stderr)
+            failed = True
+        elif event["type"] == "done":
+            print()
+            by_number = {p["n"]: p for p in passages}
+            if event["cited"]:
+                print("\nSources:")
+                for n in event["cited"]:
+                    p = by_number[n]
+                    print(f"[{n}] {p['title']}, {p['source']}" + (f", {p['url']}" if p["url"] else ""))
+    return 1 if failed else 0
+
+
 def read(args, parser):
     library = open_library()
     if not library:
@@ -196,6 +227,15 @@ def main(argv=None):
                                                             "embeddinggemma-2:270m-bf16-text)")
     embed_parser.add_argument("--batch", type=int, default=32, help="passages per request to Ollama (default 32)")
     embed_parser.set_defaults(run=embed)
+
+    ask_parser = commands.add_parser("ask", help="answer a question from the library with a local model",
+                                     description="Search the library, then have a local Ollama model answer from the "
+                                                 "passages it found, citing them. The model and thinking follow "
+                                                 "your pi settings unless given here.")
+    ask_parser.add_argument("question", nargs="+")
+    ask_parser.add_argument("--model", help="the Ollama chat model (default: pi's default model)")
+    ask_parser.add_argument("--think", choices=["on", "off"], help="think before answering (default: as in pi)")
+    ask_parser.set_defaults(run=ask)
 
     read_parser = commands.add_parser("read", help="print the article a passage comes from",
                                       description="Print the whole article holding a passage, with its source and "
