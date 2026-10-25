@@ -16,7 +16,16 @@ bin/librarian build                    # text and keyword index
 bin/librarian embed                    # meaning index; needs Ollama, takes days
 bin/librarian search "how much bleach per gallon of water"
 bin/librarian read 1234                # the article a passage comes from
+bin/librarian ask "someone is shivering and confused after being in the cold"
 ```
+
+`ask` searches the library first, then has a local Ollama model answer from
+the passages it found, citing them by number, and lists the sources it cited.
+The model and thinking follow your pi settings (`~/.pi/agent/settings.json`):
+pi's default model when pi uses Ollama, otherwise `qwen3.8:27b-mlx`, with
+thinking unless pi's level is off. `--model` and `--think on|off` override
+them. When the library has nothing on a question, the answer says so and
+labels its general answer as from memory.
 
 `embed` gives every passage an EmbeddingGemma vector through
 [Ollama](https://ollama.com), with `embeddinggemma-2:270m-bf16-text` unless

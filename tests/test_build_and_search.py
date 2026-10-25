@@ -130,6 +130,15 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(library.search("sourdough starter flour")[0].title, "Sourdough")
         self.assertEqual(library.stats()[0], 2)
 
+    def test_returns_text_that_two_books_share_only_once(self):
+        # zimgit's Water and Post Disaster collections bundle many of the same PDFs.
+        for label, filename in (("zimgit-water_en", "zimgit-water_en_2024-08.zim"),
+                                ("zimgit-post-disaster_en", "zimgit-post-disaster_en_2024-05.zim")):
+            write_book(self.home, label, filename,
+                       [Page("Hypothermia", "Hypothermia", wiki_page("Hypothermia", [SHIVERING, REWARMING]))])
+        build_quietly(self.home)
+        self.assertEqual(len(self.library().search("hypothermia shivering")), 1)
+
     def test_keeps_articles_whose_dropped_sections_hold_other_dropped_sections(self):
         # Wikipedia's flat layout: Footnotes and Bibliography sit under References, which is dropped first.
         tail = "".join(f'<div class="mw-heading mw-heading{level}"><h{level}>{name}</h{level}></div><p>{name} text</p>'

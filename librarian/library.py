@@ -4,7 +4,8 @@ Articles are stored compressed, and passages are offsets into their article's te
 BM25) holds no text of its own. Keyword search follows Survival LLM's library/search.py (MIT License, Copyright
 (c) 2026 Ronny Fernandez; see LICENSE.survival-llm): every word first, any word when that finds too little, and
 sources weighted by how authoritative they are. When the passages also have vectors (librarian/meaning.py), the
-keyword and meaning rankings are merged by reciprocal rank fusion. Results keep one passage per article.
+keyword and meaning rankings are merged by reciprocal rank fusion. Results keep one passage per article,
+and text that several books share appears once.
 """
 import re
 import sqlite3
@@ -159,18 +160,26 @@ class Library:
     def search(self, query, limit=8):
         """The best passages for a question, at most one per article."""
         ranking = self.ranking(query)
-        article_of = {}
+        found = {}
         for at in range(0, len(ranking), 500):  # passages of rebuilt books are gone; they drop out here
             ids = ranking[at:at + 500]
-            article_of.update(self.db.execute(
-                f"SELECT id, article_id FROM passages WHERE id IN ({','.join('?' * len(ids))})", ids))
-        chosen, seen = [], set()
+            found.update((pid, (article, h)) for pid, article, h in self.db.execute(
+                f"SELECT id, article_id, hash FROM passages WHERE id IN ({','.join('?' * len(ids))})", ids))
+        chosen, articles, texts = [], set(), set()
         for pid in ranking:
-            if pid in article_of and article_of[pid] not in seen:
-                seen.add(article_of[pid])
-                chosen.append(pid)
-                if len(chosen) == limit:
-                    break
+            if pid not in found:
+                continue
+            article, h = found[pid]
+            if article in articles or (h is not None and h in texts):  # one per article; shared text once
+                continue
+            articles.add(article)
+            # Every passage of a chosen article counts as seen, so another copy of the same document (zimgit's
+            # collections share PDFs) can't come back through a different passage.
+            texts.update(other for (other,) in self.db.execute("SELECT hash FROM passages WHERE article_id=?",
+                                                                 (article,)))
+            chosen.append(pid)
+            if len(chosen) == limit:
+                break
         return self.passages(chosen)
 
     def article(self, passage_id):
