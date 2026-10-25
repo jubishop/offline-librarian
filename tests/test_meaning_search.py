@@ -168,6 +168,16 @@ class MeaningSearchTest(LibraryFixture):
         self.assertEqual(self.embed(), 3)
         self.assertEqual(self.library().search("frozen and chilly")[0].title, "Hypothermia")
 
+    def test_asks_for_a_build_when_passages_have_no_text_keys_yet(self):
+        db = sqlite3.connect(os.path.join(self.home, "library.sqlite"))
+        db.execute("UPDATE passages SET hash = NULL")
+        db.commit()
+        db.close()
+        with self.assertRaises(meaning.MeaningUnavailable) as caught:
+            self.embed()
+        self.assertIn("librarian build", str(caught.exception))
+        self.assertEqual(self.ollama.requests, [])
+
     def test_falls_back_to_keywords_when_ollama_is_unreachable(self):
         self.embed()
         gone = FakeOllama()
