@@ -38,6 +38,15 @@ survival assistant built on the same idea.
 - **Three ways in.** A terminal command, a page in the browser, and a pi
   skill, all on one shared search-and-answer core. Answers default to
   `qwen3.8:27b-mlx`, the default model of the user's pi setup.
+- **Embedding shares the Mac the way Stories' index does.** On 2026-10-25 the
+  user chose to run `librarian embed` the way their Stories project runs its
+  embedding index: as a per-user launch agent with the Background process
+  type, which resumes after a crash, reboot or login, has pause, resume and
+  status commands, and pauses while Ollama has any non-embedding model, such
+  as Qwen, loaded. The user asked that it not slow down the computer; macOS
+  can't lower the priority of Ollama's GPU work, so yielding to chat models is
+  what protects interactive use. The tradeoff is a longer build, depending on
+  how much the user chats.
 - **Public code, private library.** The repository is public under MIT. The
   library is never published or committed, since several sources forbid
   redistribution or commercial use.
