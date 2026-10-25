@@ -177,11 +177,13 @@ them.
 | Kiwix mirror speed | about 11.5 MB/s | Survival LLM's `fetch_zims.py`, measured October 2026 |
 | Embedding speed | 53–61 passages of about 865 characters a second | `embeddinggemma-2:270m-bf16-text`, Ollama 0.40.10, M5 Pro, batches of 64, 2026-10-25 |
 | Passages per article | 2,029,972 passages for 497,236 articles | Survival LLM's Essentials library, 2026-10-25 |
+| The built library | 13,800,580 passages in 1,362,534 articles from 28 books, 14 GB | `librarian build`, 2026-10-25 |
+| Embedding under load | 33 passages a second while a build ran | 54,655 trial passages, 2026-10-25 |
 
-Survival LLM's Everything library installs at about five times the size of
-Essentials (21.8 GB against 4.4 GB, from its `docs/library-packs.json`), which
-suggests roughly 10 million passages for a library like ours. At the measured
-speed, embedding them would take about two days. Faster embedding,
+The built library has 13.8 million passages, more than the 10 million
+estimated from Survival LLM's downloads. At about 55 a second, embedding them
+takes about three days of uninterrupted GPU time, longer while it yields to
+chat models, and 21 GB of float16 vectors. Faster embedding,
 such as more parallel requests or running EmbeddingGemma through MLX
 directly, has not been measured yet.
 
