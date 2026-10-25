@@ -1,4 +1,5 @@
-"""A local stand-in for Ollama's /api/embed: deterministic vectors that put related words close together."""
+"""A local stand-in for Ollama: /api/embed with deterministic vectors that put related words close together, and
+/api/ps with a scripted list of loaded models."""
 import json
 import math
 import re
@@ -24,27 +25,47 @@ def vector(text):
 
 
 class FakeOllama:
-    def __init__(self, fail_after=None):
-        self.requests, self.fail_after = [], fail_after
+    """fail_after: embed requests after this many fail with 500 (for good). failures: the next this many embed
+    requests fail with 500, then they work again. loaded: lists of loaded model names, one per /api/ps call; the
+    last one repeats."""
+
+    def __init__(self, fail_after=None, failures=0, loaded=None, refuse=()):
+        self.requests, self.calls = [], []
+        self.fail_after, self.failures, self.loaded, self.refuse = fail_after, failures, list(loaded or [[]]), refuse
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):
                 pass
 
-            def do_POST(self):
-                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                fake.requests.append(body)
-                if self.path != "/api/embed" or (fake.fail_after is not None and len(fake.requests) > fake.fail_after):
-                    self.send_error(500, "model runner stopped")
-                    return
-                inputs = body["input"] if isinstance(body["input"], list) else [body["input"]]
-                data = json.dumps({"model": body["model"], "embeddings": [vector(t) for t in inputs]}).encode()
-                self.send_response(200)
+            def reply(self, code, payload):
+                data = json.dumps(payload).encode()
+                self.send_response(code)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
+
+            def do_GET(self):
+                fake.calls.append("ps")
+                if self.path != "/api/ps":
+                    return self.reply(404, {"error": "not found"})
+                names = fake.loaded.pop(0) if len(fake.loaded) > 1 else fake.loaded[0]
+                self.reply(200, {"models": [{"name": name, "model": name} for name in names]})
+
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                fake.calls.append("embed")
+                fake.requests.append(body)
+                inputs = body["input"] if isinstance(body["input"], list) else [body["input"]]
+                if fake.fail_after is not None and len(fake.requests) > fake.fail_after:
+                    return self.reply(500, {"error": "model runner stopped"})
+                if fake.failures:
+                    fake.failures -= 1
+                    return self.reply(500, {"error": "model runner stopped"})
+                if any(word in text for text in inputs for word in fake.refuse):
+                    return self.reply(400, {"error": "input is not valid"})
+                self.reply(200, {"model": body["model"], "embeddings": [vector(t) for t in inputs]})
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.host = f"127.0.0.1:{self.server.server_address[1]}"

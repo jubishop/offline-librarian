@@ -4,6 +4,7 @@ Adapted from Survival LLM's library/passages.py (MIT License, Copyright (c) 2026
 LICENSE.survival-llm). Changes: passages are returned as offsets into the article's text, so they can be read
 back out of the stored article instead of being stored twice.
 """
+import hashlib
 import re
 
 
@@ -48,3 +49,13 @@ def split_passages(text, target=1500, hard=3000):
     if start is not None:
         out.append((start, end, passage_heading))
     return "\n\n".join(paras), out
+
+
+def embedding_input(title, text):
+    """What EmbeddingGemma embeds for a passage: its retrieval prompt for documents."""
+    return f"title: {title or 'none'} | text: {text}"
+
+
+def input_hash(title, text):
+    """The key of a passage's vector: passages with the same input share one vector, across books and editions."""
+    return hashlib.blake2b(embedding_input(title, text).encode("utf-8"), digest_size=16).digest()

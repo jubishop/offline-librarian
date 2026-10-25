@@ -95,8 +95,9 @@ def _build_source(db, source, filename, path, workers, log):
                                      zlib.compress(text.encode("utf-8"), 6))).lastrowid
             ids = range(next_passage, next_passage + len(cuts))
             next_passage += len(cuts)
-            db.executemany("INSERT INTO passages(id, article_id, start, end, heading) VALUES(?,?,?,?,?)",
-                           [(pid, article_id, start, end, heading) for pid, (start, end, heading) in zip(ids, cuts)])
+            db.executemany("INSERT INTO passages(id, article_id, start, end, heading, hash) VALUES(?,?,?,?,?,?)",
+                           [(pid, article_id, start, end, heading, passages.input_hash(title, text[start:end]))
+                            for pid, (start, end, heading) in zip(ids, cuts)])
             db.executemany("INSERT INTO fts(rowid, title, body) VALUES(?,?,?)",
                            [(pid, f"{title} {heading}".strip(), text[start:end])
                             for pid, (start, end, heading) in zip(ids, cuts)])
@@ -109,6 +110,23 @@ def _build_source(db, source, filename, path, workers, log):
         db.execute("ROLLBACK")
         raise
     log(f"{source.key}: done, {count:,} articles in {time.monotonic() - started:.0f}s")
+
+
+def _hash_old_passages(db, log):
+    """Give passages built before vectors were keyed by text the hash of their embedding input."""
+    if not db.execute("SELECT 1 FROM passages WHERE hash IS NULL LIMIT 1").fetchone():
+        return
+    log("hashing passages from an older build")
+    while articles := [row[0] for row in db.execute(
+            "SELECT DISTINCT article_id FROM passages WHERE hash IS NULL LIMIT 1000")]:
+        db.execute("BEGIN")
+        for article_id in articles:
+            title, blob = db.execute("SELECT title, text FROM articles WHERE id=?", (article_id,)).fetchone()
+            text = zlib.decompress(blob).decode("utf-8")
+            db.executemany("UPDATE passages SET hash=? WHERE id=?", [
+                (passages.input_hash(title, text[start:end]), pid) for pid, start, end in db.execute(
+                    "SELECT id, start, end FROM passages WHERE article_id=?", (article_id,)).fetchall()])
+        db.execute("COMMIT")
 
 
 def build(home, workers=None, rebuild=(), log=print):
@@ -128,6 +146,7 @@ def build(home, workers=None, rebuild=(), log=print):
             raise RuntimeError("another build is already running") from None
         db = library.connect(os.path.join(home, "library.sqlite"), write=True)
         try:
+            _hash_old_passages(db, log)
             missing, changed = [], False
             for source in sources.SOURCES:
                 book = manifest.get(kiwix.label(source.name, source.flavour))

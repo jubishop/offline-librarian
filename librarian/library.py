@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS sources(id INTEGER PRIMARY KEY, key TEXT UNIQUE, labe
 CREATE TABLE IF NOT EXISTS articles(id INTEGER PRIMARY KEY, source_id INT, title TEXT, url TEXT, text BLOB);
 CREATE INDEX IF NOT EXISTS articles_title ON articles(title COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS articles_source ON articles(source_id);
-CREATE TABLE IF NOT EXISTS passages(id INTEGER PRIMARY KEY, article_id INT, start INT, end INT, heading TEXT);
+CREATE TABLE IF NOT EXISTS passages(id INTEGER PRIMARY KEY, article_id INT, start INT, end INT, heading TEXT,
+                                    hash BLOB);
 CREATE INDEX IF NOT EXISTS passages_article ON passages(article_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(title, body, content='', contentless_delete=1,
                                                   tokenize='porter unicode61 remove_diacritics 2');
@@ -58,6 +59,9 @@ def connect(path, write=False):
         return sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
     db = sqlite3.connect(path, isolation_level=None)
     db.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;" + SCHEMA)
+    if "hash" not in [column[1] for column in db.execute("PRAGMA table_info(passages)")]:
+        db.execute("ALTER TABLE passages ADD COLUMN hash BLOB")  # libraries built before vectors were keyed by text
+    db.execute("CREATE INDEX IF NOT EXISTS passages_hash ON passages(hash)")
     return db
 
 
@@ -129,7 +133,7 @@ class Library:
         if self.meaning is not None and self.meaning.available():
             from librarian.meaning import MeaningUnavailable
             try:
-                rankings.append([pid for pid, _ in self.meaning.ranking(query)])
+                rankings.append(self._passages_with(h for h, _ in self.meaning.ranking(query)))
             except MeaningUnavailable as exc:
                 self.meaning_problem = f"Searched by keyword only: {exc}"
         if len(rankings) == 1:
@@ -139,6 +143,18 @@ class Library:
             for rank, pid in enumerate(ranking):
                 fused[pid] = fused.get(pid, 0.0) + 1.0 / (FUSION_K + rank)
         return sorted(fused, key=fused.get, reverse=True)
+
+    def _passages_with(self, hashes):
+        """Passage ids whose embedding inputs have these hashes, in the hashes' order; hashes no passage has any
+        more (from replaced editions) drop out."""
+        hashes = list(hashes)
+        found = {}
+        for at in range(0, len(hashes), 500):
+            part = hashes[at:at + 500]
+            for pid, h in self.db.execute(
+                    f"SELECT id, hash FROM passages WHERE hash IN ({','.join('?' * len(part))})", part):
+                found.setdefault(h, []).append(pid)
+        return [pid for h in hashes for pid in found.get(h, [])]
 
     def search(self, query, limit=8):
         """The best passages for a question, at most one per article."""

@@ -139,5 +139,66 @@ class MeaningCommandsTest(unittest.TestCase):
         self.assertIn("librarian embed", embedded.stderr)
 
 
+class BackgroundWorkerCommandsTest(unittest.TestCase):
+    """embed install, uninstall, status, pause and resume, with a stand-in for launchctl."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home, self.user = os.path.join(tmp.name, "library"), os.path.join(tmp.name, "user")
+        bin_dir = os.path.join(tmp.name, "bin")
+        for folder in (self.home, self.user, bin_dir):
+            os.makedirs(folder)
+        self.calls = os.path.join(tmp.name, "launchctl-calls")
+        with open(os.path.join(bin_dir, "launchctl"), "w") as f:
+            f.write(f"""#!/bin/sh
+echo "$*" >> '{self.calls}'
+case "$1" in
+  bootstrap) touch '{tmp.name}/loaded' ;;
+  bootout) rm -f '{tmp.name}/loaded' ;;
+  print) test -e '{tmp.name}/loaded' ;;
+esac
+""")
+        os.chmod(os.path.join(bin_dir, "launchctl"), 0o755)
+        self.path = bin_dir + os.pathsep + os.environ["PATH"]
+
+    def run_librarian(self, *args):
+        env = {**os.environ, "OFFLINE_LIBRARIAN_HOME": self.home, "HOME": self.user, "PATH": self.path}
+        return subprocess.run([sys.executable, "-B", "-m", "librarian", *args], cwd=ROOT, env=env,
+                              capture_output=True, text=True, timeout=120)
+
+    def launchctl_calls(self):
+        with open(self.calls) as f:
+            return [line.split()[0] for line in f]
+
+    def test_install_writes_a_background_launch_agent_and_starts_it(self):
+        import plistlib
+        result = self.run_librarian("embed", "install")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = os.path.join(self.user, "Library", "LaunchAgents", "org.jubishop.offline-librarian.embed.plist")
+        with open(path, "rb") as f:
+            agent = plistlib.load(f)
+        self.assertEqual(agent["ProcessType"], "Background")
+        self.assertTrue(agent["KeepAlive"] and agent["RunAtLoad"])
+        self.assertEqual(agent["ProgramArguments"][1:],
+                         ["embed", "worker", "--model", "embeddinggemma-2:270m-bf16-text"])
+        self.assertTrue(agent["ProgramArguments"][0].endswith("/bin/librarian"))
+        self.assertEqual(agent["EnvironmentVariables"]["OFFLINE_LIBRARIAN_HOME"], self.home)
+        self.assertEqual(self.launchctl_calls(), ["bootout", "bootstrap"])
+        self.assertIn("background worker: running", self.run_librarian("embed", "status").stdout)
+
+        removed = self.run_librarian("embed", "uninstall")
+        self.assertEqual(removed.returncode, 0, removed.stderr)
+        self.assertFalse(os.path.exists(path))
+        self.assertIn("background worker: not installed", self.run_librarian("embed", "status").stdout)
+
+    def test_pause_and_resume_show_in_status(self):
+        self.assertIn("state: not started", self.run_librarian("embed", "status").stdout)
+        self.run_librarian("embed", "pause")
+        self.assertIn("(paused)", self.run_librarian("embed", "status").stdout)
+        self.run_librarian("embed", "resume")
+        self.assertNotIn("(paused)", self.run_librarian("embed", "status").stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
