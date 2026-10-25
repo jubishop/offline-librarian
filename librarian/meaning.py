@@ -255,10 +255,13 @@ class _Run:
         if model and model != self.embedder.model:
             raise MeaningUnavailable(f"the saved vectors were made with {model}; embed with that model, or delete "
                                      f"vectors.f16 and vectors.sqlite in {self.home} to start over")
-        self.pending = _pending(self.home, self.store)
         library = sqlite3.connect(f"file:{os.path.join(self.home, 'library.sqlite')}?mode=ro", uri=True)
         last = 0
         try:
+            if library.execute("SELECT 1 FROM passages WHERE hash IS NULL LIMIT 1").fetchone():
+                raise MeaningUnavailable("the library was built before vectors were keyed by text; run "
+                                         "librarian build to update it, then embed again")
+            self.pending = _pending(self.home, self.store)
             while rows := library.execute(
                     "SELECT p.id, p.article_id, p.start, p.end, a.title, p.hash FROM passages p "
                     "JOIN articles a ON a.id = p.article_id WHERE p.id > ? ORDER BY p.id LIMIT ?",
