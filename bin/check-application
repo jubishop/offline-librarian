@@ -1,0 +1,6 @@
+#!/bin/sh
+# Run Offline Librarian's application checks; bin/check --full calls this after the foundation checks.
+set -eu
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$root"
+"${OFFLINE_LIBRARIAN_PYTHON:-python3}" -B -W error::ResourceWarning -m unittest discover -s tests

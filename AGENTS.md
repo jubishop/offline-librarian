@@ -41,7 +41,10 @@ take precedence over this block and the foundation pages wherever they differ.
 ## Project
 
 Offline Librarian answers questions offline from a local Kiwix library; see
-the [README](README.md). It has no application yet, so it has no project
-commands, stronger requirements, or exceptions beyond the block above. Add
-them here, and in the [development workflow](docs/development-workflow.md),
-when application code arrives.
+the [README](README.md) and the [design](docs/design.md). Its command is
+`bin/librarian`, and `bin/check-application` runs its tests; the
+[development workflow](docs/development-workflow.md) has the details.
+
+- Never commit library data, downloads, or indexes: several sources forbid
+  redistribution.
+- Tests never touch the internet; fake web servers stand in for Kiwix.

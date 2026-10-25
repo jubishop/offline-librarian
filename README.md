@@ -5,7 +5,19 @@ of it, by keyword and by meaning with EmbeddingGemma, and a local Ollama model
 answers from the passages it found, showing each source. Use it from the
 terminal, a browser page, or a pi skill.
 
-The project has no application yet, so it has no entry points to run.
+It needs macOS or Linux and Python 3.14 or later. It is being built in
+stages; see the [design](docs/design.md). So far it downloads the library's
+Kiwix books:
+
+```sh
+bin/librarian fetch          # every book, about 32 GB
+bin/librarian fetch wikem_en_all
+```
+
+Books go to `~/.local/share/offline-librarian/zim`, or to `zim` inside
+`$OFFLINE_LIBRARIAN_HOME` when that is set. Run it again to resume an
+interrupted download: each file is checked against its SHA-256 before it is
+kept.
 
 Offline Librarian is released under the [MIT License](LICENSE).
 

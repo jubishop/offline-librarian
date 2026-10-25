@@ -1,0 +1,9 @@
+[project]
+name = "offline-librarian"
+version = "0.1.0"
+description = "Answer questions offline from a local Kiwix library."
+requires-python = ">=3.14"
+dependencies = []
+
+[tool.uv]
+package = false

@@ -25,17 +25,27 @@ it before running `direnv allow`; search does not need it.
 
 ## Checks
 
-Follow the [check schedule](foundation/engineering-policy.md#checks). This
-project has no application yet, so it has no `bin/check-application`, and
-`bin/check --full` runs only the foundation checks. When application code
-arrives, add `bin/check-application` and describe what it runs here.
+Follow the [check schedule](foundation/engineering-policy.md#checks).
+`bin/check --full` runs `bin/check-application` after the foundation checks.
+It runs the unit tests in `tests/` with the standard library's `unittest`,
+treating unclosed resources as errors:
+
+```sh
+bin/check-application
+python3 -B -m unittest tests.test_kiwix_fetch   # one test file
+```
+
+Tests that download run against a local web server, never the internet.
 
 ## Runtime and toolchain versions
 
-No application runtime is declared yet; the foundation tools under
-[Setup](#setup) are the only requirements. When the project adds a runtime or
-toolchain, list its minimum supported version and where it is declared,
-following the
+The application requires Python 3.14 or later, declared in `pyproject.toml`
+and checked by `librarian/__main__.py` before anything runs.
+`.python-version` asks for the newest Python that meets that minimum. CI tests
+3.14 and the latest stable release. `bin/librarian` and
+`bin/check-application` run `python3`, or the interpreter in
+`OFFLINE_LIBRARIAN_PYTHON`. Foundation commands keep their Python 3.9 or later
+requirement. See the
 [version policy](foundation/engineering-policy.md#runtime-and-toolchain-versions).
 
 ## Deployment
