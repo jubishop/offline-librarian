@@ -52,6 +52,14 @@ survival assistant built on the same idea.
   cores with throttled disk access, so a build isn't noticeable. The tradeoff
   is a slower full build, estimated at several times the hour it takes at
   normal priority; full builds are rare.
+- **Survival LLM's converter, adapted.** On 2026-10-25 the user confirmed
+  keeping the code adapted from Survival LLM (MIT, with its notice in
+  `LICENSE.survival-llm`) rather than writing a new converter. Its lxml-based
+  conversion already handles MediaWiki reference sections, Stack Exchange
+  answers and their authors, zimgit's numbered PDFs, translated WikEM pages,
+  and WikiMed articles repeated in Wikipedia. It is used without trafilatura,
+  its heaviest dependency: a page with no main content falls back to its whole
+  body. PDFs go through poppler's `pdftotext`.
 - **Public code, private library.** The repository is public under MIT. The
   library is never published or committed, since several sources forbid
   redistribution or commercial use.
@@ -117,12 +125,6 @@ These were made while building, not by the user, and can change.
 - **The library lives in `~/.local/share/offline-librarian`** (or
   `$OFFLINE_LIBRARIAN_HOME`). The ZIM files stay after the build, so a source
   can be rebuilt without downloading it again.
-- **Survival LLM's converter, adapted.** Its lxml-based conversion already
-  handles MediaWiki reference sections, Stack Exchange answers and their
-  authors, zimgit's numbered PDFs, translated WikEM pages, and WikiMed
-  articles repeated in Wikipedia. It is used without trafilatura, its
-  heaviest dependency: a page with no main content falls back to its whole
-  body. PDFs go through poppler's `pdftotext`.
 - **One SQLite file.** Articles are stored compressed, passages are offsets
   into them, and the FTS5 index stores no text of its own. Each source is
   built in one transaction, and only rebuilt when its file changes.
