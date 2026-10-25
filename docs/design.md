@@ -104,6 +104,11 @@ as in any pi conversation. Searching depends on the model following the
 skill, and `/skill:offline-librarian` forces the skill to load; `librarian ask`
 and the browser page search in code.
 
+The skill is installed for pi only, linked from `~/.pi/agent/skills`, not
+shared through `~/.agents/skills` with the user's other harnesses. The user
+chose this on 2026-10-25 because cloud-based harnesses such as Claude Code and
+Codex won't be working when the library is needed.
+
 ## Measurements
 
 These set the expected build times; recheck them when the build depends on
