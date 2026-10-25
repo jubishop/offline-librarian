@@ -130,6 +130,42 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(library.search("sourdough starter flour")[0].title, "Sourdough")
         self.assertEqual(library.stats()[0], 2)
 
+    def test_keeps_articles_whose_dropped_sections_hold_other_dropped_sections(self):
+        # Wikipedia's flat layout: Footnotes and Bibliography sit under References, which is dropped first.
+        tail = "".join(f'<div class="mw-heading mw-heading{level}"><h{level}>{name}</h{level}></div><p>{name} text</p>'
+                       for level, name in [(2, "See also"), (2, "References"), (3, "Footnotes"),
+                                           (3, "Bibliography"), (2, "Further reading")])
+        html = f"""<html><body><div id="mw-content-text"><div class="mw-parser-output">
+<p>{SHIVERING}</p><div class="mw-heading mw-heading2"><h2>Treatment</h2></div><p>{REWARMING}</p>{tail}
+</div></div></body></html>"""
+        write_book(self.home, "wikipedia_en_top1m nopic", "wikipedia_en_top1m_nopic_2026-04.zim",
+                   [Page("Hypothermia", "Hypothermia", html)])
+        lines = build_quietly(self.home)
+        self.assertFalse([line for line in lines if "skipped" in line], lines)
+        article = self.library().article(self.library().search("hypothermia shivering")[0].id)
+        self.assertIn("## Treatment", article.text)
+        self.assertIn("Do not rub the arms and legs", article.text)
+        for name in ("See also", "Footnotes", "Bibliography", "Further reading"):
+            self.assertNotIn(name, article.text)
+
+    def test_keeps_pages_with_control_characters(self):
+        html = f"<html><body><main><p>{SHIVERING}\x0b</p><p>{REWARMING}\x1f</p></main></body></html>"
+        write_book(self.home, "ifixit_en_all", "ifixit_en_all_2025-12.zim", [Page("Guide/1", "Rewarming", html)])
+        lines = build_quietly(self.home)
+        self.assertFalse([line for line in lines if "skipped" in line], lines)
+        self.assertEqual(self.library().search("hypothermia shivering")[0].title, "Rewarming")
+
+    def test_rebuilds_the_books_it_is_asked_to(self):
+        write_book(self.home, "wikem_en_all nopic", "wikem_en_all_nopic_2026-10.zim",
+                   [Page("Hypothermia", "Hypothermia", wiki_page("Hypothermia", [SHIVERING]))])
+        build_quietly(self.home)
+        lines = []
+        build.build(self.home, workers=1, rebuild=["wikem"], log=lines.append)
+        self.assertIn("wikem: building from wikem_en_all_nopic_2026-10.zim", lines)
+        self.assertEqual(self.library().search("hypothermia")[0].title, "Hypothermia")
+        with self.assertRaises(ValueError):
+            build.build(self.home, workers=1, rebuild=["not-a-source"], log=lines.append)
+
 
 if __name__ == "__main__":
     unittest.main()
