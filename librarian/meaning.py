@@ -188,6 +188,22 @@ def _pending(home, store):
         db.close()
 
 
+def _source_ranges(library):
+    """(first, last) passage id of each built source, in the order to embed them: official and clinical sources
+    first, so meaning search helps with them soonest, then the rest; smallest first within each, so Wikipedia comes
+    last. Each source is built in one transaction, so its articles and their passages have contiguous ids."""
+    ranges = []
+    for source_id, in library.execute("SELECT id FROM sources WHERE done = 1 ORDER BY weight >= 1.3 DESC, articles, id"):
+        low, high = library.execute("SELECT MIN(id), MAX(id) FROM articles WHERE source_id = ?", (source_id,)).fetchone()
+        if low is None:
+            continue
+        first = library.execute("SELECT MIN(id) FROM passages WHERE article_id = ?", (low,)).fetchone()[0]
+        last = library.execute("SELECT MAX(id) FROM passages WHERE article_id = ?", (high,)).fetchone()[0]
+        if first is not None and last is not None:
+            ranges.append((first, last))
+    return ranges
+
+
 class _Run:
     """One pass over the library, embedding every passage input without a vector."""
 
@@ -256,25 +272,26 @@ class _Run:
             raise MeaningUnavailable(f"the saved vectors were made with {model}; embed with that model, or delete "
                                      f"vectors.f16 and vectors.sqlite in {self.home} to start over")
         library = sqlite3.connect(f"file:{os.path.join(self.home, 'library.sqlite')}?mode=ro", uri=True)
-        last = 0
         try:
             if library.execute("SELECT 1 FROM passages WHERE hash IS NULL LIMIT 1").fetchone():
                 raise MeaningUnavailable("the library was built before vectors were keyed by text; run "
                                          "librarian build to update it, then embed again")
             self.pending = _pending(self.home, self.store)
-            while rows := library.execute(
-                    "SELECT p.id, p.article_id, p.start, p.end, a.title, p.hash FROM passages p "
-                    "JOIN articles a ON a.id = p.article_id WHERE p.id > ? ORDER BY p.id LIMIT ?",
-                    (last, CHUNK)).fetchall():
-                last = rows[-1][0]
-                known = self.store.known({r[5] for r in rows})
-                todo, seen = [], set()
-                for row in rows:
-                    if row[5] not in known and row[5] not in seen:
-                        seen.add(row[5])
-                        todo.append(row)
-                if todo and not self._embed_chunk(library, todo):
-                    return self.done
+            for first, last_id in _source_ranges(library):
+                last = first - 1
+                while rows := library.execute(
+                        "SELECT p.id, p.article_id, p.start, p.end, a.title, p.hash FROM passages p "
+                        "JOIN articles a ON a.id = p.article_id WHERE p.id > ? AND p.id <= ? ORDER BY p.id LIMIT ?",
+                        (last, last_id, CHUNK)).fetchall():
+                    last = rows[-1][0]
+                    known = self.store.known({r[5] for r in rows})
+                    todo, seen = [], set()
+                    for row in rows:
+                        if row[5] not in known and row[5] not in seen:
+                            seen.add(row[5])
+                            todo.append(row)
+                    if todo and not self._embed_chunk(library, todo):
+                        return self.done
             self.pending = 0
             self.report("current")
             return self.done

@@ -29,7 +29,10 @@ labels its general answer as from memory.
 
 `embed` gives every passage an EmbeddingGemma vector through
 [Ollama](https://ollama.com), with `embeddinggemma-2:270m-bf16-text` unless
-`--model` names another. The whole library takes about three days. Vectors
+`--model` names another. The whole library takes about three days. It
+embeds the official and clinical sources first (Ready.gov, MedlinePlus, CDC,
+NHS, WikEM, the manuals), about an hour and a quarter, then the rest from
+smallest to largest; Wikipedia, 87% of the passages, comes last. Vectors
 are keyed by the passage's text, so text that appears again, in another book
 or a new edition, is never embedded twice. Until a passage has a vector, it is
 found by keyword only. `search` uses the vectors whenever they exist, and says

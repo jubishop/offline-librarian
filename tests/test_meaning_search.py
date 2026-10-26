@@ -113,6 +113,19 @@ class MeaningSearchTest(LibraryFixture):
         self.assertEqual(self.library().search("frozen and chilly")[0].title, "Hypothermia")
         self.assertNotIn("Sauerkraut", [hit.title for hit in self.library().search("cabbage brine")])
 
+    def test_embeds_official_sources_first_and_the_biggest_last(self):
+        # Appropedia is built before MedlinePlus, but MedlinePlus is an official source.
+        write_book(self.home, "appropedia_en_all maxi", "appropedia_en_all_maxi_2026-02.zim",
+                   [Page("Bread", "Bread", wiki_page("Bread", [STARTER]))])
+        write_book(self.home, "medlineplus.gov_en_all", "medlineplus.gov_en_all_2025-01.zim",
+                   [Page("medlineplus.gov/ency/article/000038.htm", "Cold exposure",
+                         f"<html><body><main><p>{SHIVERING}</p><p>{REWARMING}</p></main></body></html>")])
+        self.build()
+        self.embed()
+        titles = [text.split(" | text: ")[0] for text in self.ollama.inputs()]
+        self.assertEqual(titles[0], "title: Cold exposure")  # the smaller official source, then WikEM's three
+        self.assertEqual(titles[-1], "title: Bread")  # Appropedia isn't official, so it comes last
+
     def test_the_same_text_in_two_books_is_embedded_once(self):
         write_book(self.home, "wikipedia_en_medicine nopic", "wikipedia_en_medicine_nopic_2026-10.zim",
                    [HYPOTHERMIA])
