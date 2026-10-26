@@ -11,6 +11,9 @@ US_GOV = "Public domain (U.S. government work)"
 SE_LICENSE = "CC BY-SA 2.5, 3.0 or 4.0 by post date, the authors named with each post https://stackoverflow.com/help/licensing"
 # Translated copies of pages ("Page/tr" in WikEM) and sites' non-English sections.
 FOREIGN_SECTIONS = r"/(es|spanish|espanol|languages|translations)(/|$)"
+# Ready.gov repeats most pages under language prefixes (www.ready.gov/de/node/11963), mostly in English with a
+# different language menu: 1,614 of its 2,320 pages on 2026-10-25.
+READY_GOV_LANGUAGES = r"^www\.ready\.gov/[a-z]{2}(-[a-z]+)?/"
 
 
 @dataclass(frozen=True)
@@ -80,7 +83,7 @@ SOURCES = [
            f"{US_GOV}, U.S. National Library of Medicine; its encyclopedia and drug pages are licensed to NLM by "
            "A.D.A.M., ASHP and Natural Medicines", weight=1.3, skip=FOREIGN_SECTIONS),
     Source("ready.gov_en_all", "", "ready-gov", "Ready.gov (FEMA)", "emergency", "web", "https://",
-           f"{US_GOV}, FEMA", weight=1.3, skip=FOREIGN_SECTIONS),
+           f"{US_GOV}, FEMA", weight=1.3, skip=FOREIGN_SECTIONS + "|" + READY_GOV_LANGUAGES),
     Source("ifixit_en_all", "", "ifixit", "iFixit repair guides", "repair", "web", "https://www.ifixit.com/",
            f"CC BY-NC-SA 3.0 (non-commercial), iFixit guide authors {CC_BY_NC_SA}"),
     Source("wikipedia_en_top1m", "nopic", "wikipedia", "Wikipedia", "encyclopedia", "wiki",
