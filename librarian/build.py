@@ -13,7 +13,7 @@ import re
 import time
 import zlib
 
-from librarian import convert, kiwix, library, passages, sources
+from librarian import convert, documents, kiwix, library, passages, sources
 
 _ARCHIVE = _KIND = _SKIP = None   # per worker process
 
@@ -51,6 +51,7 @@ def _convert(bounds):
 
 
 def _articles(path, source, workers, log):
+    """(title, url, text, passages) for each article in a book."""
     from libzim.reader import Archive
     count = Archive(path).entry_count
     step = 50 if source.kind == "pdf" else 1000
@@ -59,7 +60,8 @@ def _articles(path, source, workers, log):
         for batch, problems in pool.imap(_convert, ranges):
             for problem in problems:
                 log(f"{source.key}: skipped {problem}")
-            yield from batch
+            for title, entry_path, text, cuts in batch:
+                yield title, source.url and source.url + entry_path, text, cuts
 
 
 def _drop(db, source_id):
@@ -70,9 +72,11 @@ def _drop(db, source_id):
     db.execute("DELETE FROM sources WHERE id=?", (source_id,))
 
 
-def _build_source(db, source, filename, path, workers, log):
+def _build_source(db, source, origin, found, log):
+    """Build one source from found, its (title, url, text, passages), recording origin (its book's file, or its
+    documents' signature) so it is rebuilt only when that changes."""
     started = time.monotonic()
-    log(f"{source.key}: building from {filename}")
+    log(f"{source.key}: building from {origin}")
     others = sorted(sources.SAME_ARTICLES - {source.key}) if source.key in sources.SAME_ARTICLES else []
     known = {title.lower() for (title,) in db.execute(
         "SELECT a.title FROM articles a JOIN sources s ON s.id = a.source_id "
@@ -84,15 +88,14 @@ def _build_source(db, source, filename, path, workers, log):
             _drop(db, old[0])
         source_id = db.execute(
             "INSERT INTO sources(key, label, topic, license, weight, origin) VALUES(?,?,?,?,?,?)",
-            (source.key, source.label, source.topic, source.license, source.weight, filename)).lastrowid
+            (source.key, source.label, source.topic, source.license, source.weight, origin)).lastrowid
         next_passage = db.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM passages").fetchone()[0]
         count = 0
-        for title, entry_path, text, cuts in _articles(path, source, workers, log):
+        for title, url, text, cuts in found:
             if title.lower() in known:
                 continue
             article_id = db.execute("INSERT INTO articles(source_id, title, url, text) VALUES(?,?,?,?)",
-                                    (source_id, title, source.url and source.url + entry_path,
-                                     zlib.compress(text.encode("utf-8"), 6))).lastrowid
+                                    (source_id, title, url, zlib.compress(text.encode("utf-8"), 6))).lastrowid
             ids = range(next_passage, next_passage + len(cuts))
             next_passage += len(cuts)
             db.executemany("INSERT INTO passages(id, article_id, start, end, heading, hash) VALUES(?,?,?,?,?,?)",
@@ -112,6 +115,11 @@ def _build_source(db, source, filename, path, workers, log):
     log(f"{source.key}: done, {count:,} articles in {time.monotonic() - started:.0f}s")
 
 
+def _built(db, key, origin):
+    row = db.execute("SELECT done, origin FROM sources WHERE key=?", (key,)).fetchone()
+    return bool(row and row[0] and row[1] == origin)
+
+
 def _hash_old_passages(db, log):
     """Give passages built before vectors were keyed by text the hash of their embedding input."""
     if not db.execute("SELECT 1 FROM passages WHERE hash IS NULL LIMIT 1").fetchone():
@@ -129,15 +137,22 @@ def _hash_old_passages(db, log):
         db.execute("COMMIT")
 
 
-def build(home, workers=None, rebuild=(), log=print):
-    """Build every downloaded book into home/library.sqlite that isn't built from its current file yet, and the
-    sources whose keys are in rebuild in any case. Returns the labels of the books that aren't downloaded."""
-    unknown = sorted(set(rebuild) - {source.key for source in sources.SOURCES})
+def build(home, workers=None, rebuild=(), documents_sources=None, log=print):
+    """Build every downloaded book and document source into home/library.sqlite that isn't built from its current
+    files yet, and the sources whose keys are in rebuild in any case. Returns what isn't downloaded yet."""
+    document_sources = sources.DOCUMENTS if documents_sources is None else documents_sources
+    unknown = sorted(set(rebuild) - {s.key for s in sources.SOURCES} - {s.key for s in document_sources})
     if unknown:
         raise ValueError(f"not a library source: {', '.join(unknown)}")
     zim = os.path.join(home, "zim")
-    with open(os.path.join(zim, "manifest.json")) as f:
-        manifest = json.load(f)
+    try:
+        with open(os.path.join(zim, "manifest.json")) as f:
+            manifest = json.load(f)
+    except FileNotFoundError:
+        manifest = {}
+    signatures = {s.key: documents.signature(home, s) for s in document_sources}
+    if not manifest and not any(signatures.values()):
+        raise FileNotFoundError("nothing is downloaded yet")
     workers = workers or max(1, (os.cpu_count() or 2) - 2)
     with open(os.path.join(home, ".build.lock"), "w") as lock:
         try:
@@ -153,12 +168,20 @@ def build(home, workers=None, rebuild=(), log=print):
                 if not book:
                     missing.append(kiwix.label(source.name, source.flavour))
                     continue
-                row = db.execute("SELECT done, origin FROM sources WHERE key=?", (source.key,)).fetchone()
-                if row and row[0] and row[1] == book["file"] and source.key not in rebuild:
+                if _built(db, source.key, book["file"]) and source.key not in rebuild:
                     log(f"{source.key}: already built")
                     continue
-                _build_source(db, source, book["file"], os.path.join(zim, book["file"]), workers, log)
+                _build_source(db, source, book["file"], _articles(os.path.join(zim, book["file"]), source, workers,
+                                                                  log), log)
                 changed = True
+            for source in document_sources:
+                if not signatures[source.key]:
+                    missing.append(source.key)
+                elif _built(db, source.key, signatures[source.key]) and source.key not in rebuild:
+                    log(f"{source.key}: already built")
+                else:
+                    _build_source(db, source, signatures[source.key], documents.articles(home, source), log)
+                    changed = True
             if changed:
                 log("optimizing the search index")
                 db.execute("INSERT INTO fts(fts) VALUES('optimize')")

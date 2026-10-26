@@ -5,7 +5,7 @@ then embeds whatever text is new. Problems are reported once, through notify.
 import json
 import os
 
-from librarian import build, kiwix, sources
+from librarian import build, documents, kiwix, sources
 
 
 def _manifest(zim):
@@ -28,7 +28,7 @@ def prune(zim, log=print):
     return removed
 
 
-def update(home, catalog_url=kiwix.CATALOG_URL, workers=None, notify=None, log=print):
+def update(home, catalog_url=kiwix.CATALOG_URL, workers=None, notify=None, log=print, document_sources=None):
     """Bring the downloaded books up to date and rebuild what changed. Returns the problems, if any."""
     zim = os.path.join(home, "zim")
     have = _manifest(zim)
@@ -38,8 +38,11 @@ def update(home, catalog_url=kiwix.CATALOG_URL, workers=None, notify=None, log=p
         failures += kiwix.fetch(wanted, zim, catalog_url=catalog_url, log=log)
     except (OSError, ValueError) as exc:  # the catalog itself couldn't be read
         failures.append(f"couldn't read the Kiwix catalog: {exc}")
+    if document_sources is None:
+        document_sources = [s for s in sources.DOCUMENTS if os.path.isdir(documents.folder(home, s))]
+    failures += documents.fetch(home, document_sources, log=log)  # only what an earlier fetch missed
     try:
-        build.build(home, workers=workers, log=log)
+        build.build(home, workers=workers, documents_sources=document_sources, log=log)
     except Exception as exc:
         failures.append(f"the build failed: {exc}")
     else:

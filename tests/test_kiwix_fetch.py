@@ -1,4 +1,5 @@
 """Downloading Kiwix books: catalog lookup, mirrors, resuming, and checksums, against a local web server."""
+import offline  # noqa: F401  (tests never reach the internet)
 import hashlib
 import json
 import os

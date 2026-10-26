@@ -1,4 +1,5 @@
 """Answering a question: search first, then a local model writes the answer from numbered passages."""
+import offline  # noqa: F401  (tests never reach the internet)
 import json
 import os
 import subprocess
@@ -100,7 +101,9 @@ class SettingsTest(unittest.TestCase):
 class AskCommandTest(LibraryFixture):
     def test_prints_the_answer_and_its_sources(self):
         chat = self.fake(answer="Move them somewhere warm and call for help [1].")
-        user = tempfile.mkdtemp()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        user = tmp.name
         os.makedirs(os.path.join(user, ".pi", "agent"))
         with open(os.path.join(user, ".pi", "agent", "settings.json"), "w") as f:
             json.dump({"defaultProvider": "ollama", "defaultModel": "qwen-test", "defaultThinkingLevel": "off"}, f)

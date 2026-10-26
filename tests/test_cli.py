@@ -1,4 +1,5 @@
 """The librarian command, run the way a person runs it."""
+import offline  # noqa: F401  (tests never reach the internet)
 import json
 import os
 import subprocess
@@ -247,7 +248,9 @@ class ServeCommandTest(unittest.TestCase):
     def test_serves_until_stopped_and_a_stop_is_clean(self):
         import signal
         import urllib.request
-        home = tempfile.mkdtemp()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        home = tmp.name
         env = {**os.environ, "OFFLINE_LIBRARIAN_HOME": home}
         process = subprocess.Popen([sys.executable, "-B", "-m", "librarian", "serve", "--port", "0", "--bind",
                                     "127.0.0.1"], cwd=ROOT, env=env, stdout=subprocess.PIPE, text=True)

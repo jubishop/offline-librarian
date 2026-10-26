@@ -1,4 +1,5 @@
 """Embedding every passage, then searching by meaning as well as by keyword."""
+import offline  # noqa: F401  (tests never reach the internet)
 import os
 import sqlite3
 import tempfile

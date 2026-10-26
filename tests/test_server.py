@@ -1,4 +1,5 @@
 """The browser page's server: what it serves, who it answers, and the shared history."""
+import offline  # noqa: F401  (tests never reach the internet)
 import http.client
 import json
 import os

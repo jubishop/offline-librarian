@@ -1,4 +1,5 @@
 """Building the library from Kiwix books, then searching and reading it."""
+import offline  # noqa: F401  (tests never reach the internet)
 import os
 import tempfile
 import unittest

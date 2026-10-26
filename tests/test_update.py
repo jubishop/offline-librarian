@@ -1,4 +1,5 @@
 """The monthly update: newer Kiwix editions downloaded, rebuilt, and the old files removed."""
+import offline  # noqa: F401  (tests never reach the internet)
 import json
 import os
 import tempfile
