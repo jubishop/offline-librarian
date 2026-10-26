@@ -131,6 +131,17 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(library.search("sourdough starter flour")[0].title, "Sourdough")
         self.assertEqual(library.stats()[0], 2)
 
+    def test_leaves_out_ready_gov_pages_repeated_under_language_prefixes(self):
+        page = f"<html><body><main><h1>Power Outages</h1><p>{SHIVERING}</p><p>{REWARMING}</p></main></body></html>"
+        write_book(self.home, "ready.gov_en_all", "ready.gov_en_all_2026-10.zim", [
+            Page("www.ready.gov/power-outages", "Power Outages", page),
+            Page("www.ready.gov/de/node/11963", "Power Outages", page.replace("<h1>", "<h1>Deutsch ")),
+            Page("www.ready.gov/zh-hans/node/11963", "Power Outages", page.replace("<h1>", "<h1>简体中文 ")),
+        ])
+        build_quietly(self.home)
+        self.assertEqual([hit.url for hit in self.library().search("power outages shivering")],
+                         ["https://www.ready.gov/power-outages"])
+
     def test_returns_text_that_two_books_share_only_once(self):
         # zimgit's Water and Post Disaster collections bundle many of the same PDFs.
         for label, filename in (("zimgit-water_en", "zimgit-water_en_2024-08.zim"),
