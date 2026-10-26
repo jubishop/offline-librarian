@@ -43,6 +43,18 @@ fails at once. Tests
 that build write small books with libzim and PDFs by hand, and read the PDFs
 with the real `pdftotext`. CI installs `poppler-utils` for it.
 
+## Retrieval test set
+
+`bin/eval-retrieval` scores search against `evals/questions.json`: 36
+emergency, medical and how-to questions, each listing the articles (source key
+and title pattern) a good answer needs. It runs against the real library and
+reports hit@1, hit@3, hit@8 and mean reciprocal rank for keyword search alone
+and with meaning, then lists the questions whose rank changed.
+`bin/eval-retrieval --check` confirms that every expected article exists, and
+`--verbose` shows each question's top results. Run it before and after a
+change to search or ranking; it is not part of `bin/check`, because it needs
+the built library and Ollama.
+
 ## Runtime and toolchain versions
 
 The application requires Python 3.14 or later, declared in `pyproject.toml`

@@ -179,6 +179,8 @@ them.
 | Passages per article | 2,029,972 passages for 497,236 articles | Survival LLM's Essentials library, 2026-10-25 |
 | The built library | 13,800,580 passages in 1,362,534 articles from 28 books, 14 GB | `librarian build`, 2026-10-25 |
 | Embedding under load | 33 passages a second while a build ran | 54,655 trial passages, 2026-10-25 |
+| Retrieval test set, keyword only | hit@1 0.36, hit@3 0.50, hit@8 0.53, MRR 0.44 | `bin/eval-retrieval`, 36 questions, 2026-10-25 |
+| Retrieval test set, keyword + meaning | hit@1 0.44, hit@3 0.72, hit@8 0.92, MRR 0.61 | the same, with 1.3% of passages embedded (mostly the official sources) |
 | Repeated text | 48,312 distinct inputs in 54,655 passages (12% repeats) | WikEM, NHS medicines and Ready.gov, 2026-10-25 |
 
 The built library has 13.8 million passages, more than the 10 million
@@ -223,6 +225,11 @@ These were made while building, not by the user, and can change.
   questions). It already runs the model on the GPU through MLX.
 
 ## Open questions
+
+- How much meaning should count against keywords. With 1.3% embedded, weighting
+  keywords at 0.7 scored hit@1 0.53 and MRR 0.67 against 0.44 and 0.61, but the
+  partial index holds almost only the official sources the test set expects, so
+  this waits for the full index.
 
 - How to make embedding faster. Through Ollama it reaches about 12,000 tokens
   a second; larger batches and parallel requests didn't help (2026-10-25).

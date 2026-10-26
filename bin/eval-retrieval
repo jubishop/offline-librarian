@@ -1,0 +1,5 @@
+#!/bin/sh
+# Score search against the retrieval test set in evals/questions.json, on the real library.
+set -eu
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+exec "${OFFLINE_LIBRARIAN_PYTHON:-$root/.venv/bin/python}" -B "$root/evals/retrieval.py" "$@"
