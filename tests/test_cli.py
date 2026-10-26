@@ -220,6 +220,21 @@ esac
         self.assertFalse(os.path.exists(path))
         self.assertIn("page server: not installed", self.run_librarian("serve", "status").stdout)
 
+    def test_update_install_schedules_a_monthly_background_job(self):
+        import plistlib
+        result = self.run_librarian("update", "install")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = os.path.join(self.user, "Library", "LaunchAgents", "org.jubishop.offline-librarian.update.plist")
+        with open(path, "rb") as f:
+            agent = plistlib.load(f)
+        self.assertEqual(agent["ProcessType"], "Background")
+        self.assertEqual(agent["StartCalendarInterval"], {"Day": 1, "Hour": 3, "Minute": 0})
+        self.assertFalse(agent.get("KeepAlive") or agent.get("RunAtLoad"))
+        self.assertEqual(agent["ProgramArguments"][1:], ["update", "run"])
+        self.assertIn("monthly update: scheduled", self.run_librarian("update", "status").stdout)
+        self.assertEqual(self.run_librarian("update", "uninstall").returncode, 0)
+        self.assertFalse(os.path.exists(path))
+
     def test_pause_and_resume_show_in_status(self):
         self.assertIn("state: not started", self.run_librarian("embed", "status").stdout)
         self.run_librarian("embed", "pause")

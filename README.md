@@ -56,6 +56,19 @@ a Pushover notification (with the keys in `~/.env`) when the first full pass
 finishes or a pass fails. Builds and embedding from the terminal also run at
 Background priority.
 
+## Keep it current
+
+```sh
+bin/librarian update install   # on the 1st of each month at 3:00
+bin/librarian update           # or now
+```
+
+`update` fetches newer Kiwix editions of the books you have, rebuilds only
+those books, and deletes the superseded files. The embedding worker then
+embeds whatever text is new; text that hasn't changed keeps its vectors. It
+runs at Background priority, and launchd runs a missed month when the Mac
+next wakes. Problems are sent through Pushover.
+
 ## Use it in a browser
 
 ```sh

@@ -233,6 +233,32 @@ def serve(args, parser):
     return 0
 
 
+def update(args, parser):
+    from librarian import agent, notify, priority, update as updater
+    if args.action == "install":
+        try:
+            path = agent.install_update(home())
+        except RuntimeError as exc:
+            print(f"Couldn't schedule the update: {exc}.", file=sys.stderr)
+            return 1
+        print(f"Installed {path}: the library updates itself on the 1st of each month at 3:00, or when the Mac "
+              f"next wakes. Logs: {home()}/update.log")
+        return 0
+    if args.action == "uninstall":
+        agent.uninstall(agent.UPDATE)
+        print("Removed the monthly update.")
+        return 0
+    if args.action == "status":
+        print(f"monthly update: {'scheduled' if agent.running(agent.UPDATE) else 'not installed'}")
+        return 0
+    priority.background()
+    failures = updater.update(home(), catalog_url=args.catalog, notify=notify.pushover(),
+                              log=lambda line: print(line, flush=True))
+    for failure in failures:
+        print(failure, file=sys.stderr)
+    return 1 if failures else 0
+
+
 def read(args, parser):
     library = open_library()
     if not library:
@@ -303,6 +329,15 @@ def main(argv=None):
     serve_parser.add_argument("--port", type=int, default=8740, help="the port to listen on (default 8740)")
     serve_parser.add_argument("--bind", default="0.0.0.0", help="the address to listen on (default: all of them)")
     serve_parser.set_defaults(run=serve)
+
+    update_parser = commands.add_parser(
+        "update", help="bring the library's books up to date",
+        description="Fetch newer Kiwix editions of the books already downloaded, rebuild those books, and delete "
+                    "the superseded files; the embedding worker then embeds what is new. Problems are sent through "
+                    "Pushover. ACTION is run (the default: update now), install (every month), uninstall or status.")
+    update_parser.add_argument("action", nargs="?", default="run", choices=["run", "install", "uninstall", "status"])
+    update_parser.add_argument("--catalog", default=kiwix.CATALOG_URL, help="the Kiwix catalog to read")
+    update_parser.set_defaults(run=update)
 
     read_parser = commands.add_parser("read", help="print the article a passage comes from",
                                       description="Print the whole article holding a passage, with its source and "
