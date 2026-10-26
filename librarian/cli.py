@@ -186,6 +186,7 @@ def page_addresses(port):
     names = server.allowed_hosts()
     shown = [f"http://localhost:{port}/"]
     shown += sorted(f"http://{n}:{port}/" for n in names if n.endswith(".local"))
+    shown += sorted(f"http://{n}:{port}/" for n in names if n.endswith(".ts.net"))  # Tailscale's MagicDNS name
     shown += sorted(f"http://{n}:{port}/" for n in names
                     if n.count(".") == 3 and not n.startswith(("127.", "169.254.")) and n.replace(".", "").isdigit())
     return shown
