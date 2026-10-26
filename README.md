@@ -11,7 +11,7 @@ being built in stages; see the [design](docs/design.md). So far it downloads
 the books, builds the library, and searches it by keyword and by meaning:
 
 ```sh
-bin/librarian fetch                    # every book, about 32 GB
+bin/librarian fetch                    # every book and document, about 33 GB
 bin/librarian build                    # text and keyword index
 bin/librarian embed                    # meaning index; needs Ollama, takes days
 bin/librarian search "how much bleach per gallon of water"
@@ -107,8 +107,14 @@ pi offers the skill for matching questions; `/skill:offline-librarian
 QUESTION` forces it. It is meant for pi with a local model, which keeps
 working when cloud-based assistants can't.
 
+Besides the Kiwix books, `fetch` downloads the U.S. military, FEMA, IFRC and
+WHO manuals, U.S. government risk statistics and the 2018 wikiHow dump into
+`raw/`, using the Internet Archive's copy when a site refuses scripted
+downloads.
+
 The library lives in `~/.local/share/offline-librarian`, or in
-`$OFFLINE_LIBRARIAN_HOME` when that is set: the books in `zim/`, the
+`$OFFLINE_LIBRARIAN_HOME` when that is set: the books in `zim/`, the other
+documents in `raw/`, the
 articles and their keyword index in `library.sqlite`, and the meaning index in
 `vectors.f16` and `vectors.sqlite`, with the worker's logs beside them. Run `fetch` again to
 resume an interrupted download; each file is checked against its SHA-256

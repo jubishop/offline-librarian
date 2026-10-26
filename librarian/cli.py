@@ -24,11 +24,15 @@ def fetch(args, parser):
             parser.error(f"not a library source: {', '.join(unknown)}")
         wanted = [by_name[name] for name in args.books]
     folder = os.path.join(home(), "zim")
+    log = lambda line: print(line, flush=True)  # noqa: E731
     try:
-        failures = kiwix.fetch(wanted, folder, catalog_url=args.catalog, log=lambda line: print(line, flush=True))
+        failures = kiwix.fetch(wanted, folder, catalog_url=args.catalog, log=log)
     except (OSError, ValueError) as exc:  # the catalog itself couldn't be read
         print(f"Couldn't read the Kiwix catalog: {exc}", file=sys.stderr)
         return 1
+    if not args.books:  # everything: the manuals, references and wikiHow too
+        from librarian import documents
+        failures += documents.fetch(home(), log=log)
     for failure in failures:
         print(failure, file=sys.stderr)
     return 1 if failures else 0
@@ -275,9 +279,11 @@ def read(args, parser):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="librarian", description="Answer questions from an offline library.")
     commands = parser.add_subparsers(dest="command", required=True)
-    fetch_parser = commands.add_parser("fetch", help="download the Kiwix books the library is built from",
-                                       description="Download the Kiwix books the library is built from, or just "
-                                                   "the ones named. Resumes partial downloads and checks each file.")
+    fetch_parser = commands.add_parser("fetch", help="download what the library is built from",
+                                       description="Download the Kiwix books and the other documents (manuals, "
+                                                   "references and wikiHow) the library is built from, or just the "
+                                                   "Kiwix books named. Resumes partial downloads and checks each "
+                                                   "file.")
     fetch_parser.add_argument("books", nargs="*", metavar="BOOK", help="a Kiwix name, such as wikem_en_all")
     fetch_parser.add_argument("--catalog", default=kiwix.CATALOG_URL, help="the Kiwix catalog to read")
     fetch_parser.set_defaults(run=fetch)

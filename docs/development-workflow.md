@@ -36,7 +36,10 @@ bin/check-application
 .venv/bin/python -B -m unittest discover -s tests -p 'test_kiwix*'   # some files
 ```
 
-Tests that download run against a local web server, never the internet. Tests
+Tests that download run against a local web server, never the internet:
+every test module imports `tests/offline.py`, which makes any connection or
+DNS lookup beyond this computer fail, so a test that would reach the internet
+fails at once. Tests
 that build write small books with libzim and PDFs by hand, and read the PDFs
 with the real `pdftotext`. CI installs `poppler-utils` for it.
 

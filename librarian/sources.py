@@ -90,3 +90,104 @@ SOURCES = [
 KIWIX = [(source.name, source.flavour) for source in SOURCES]
 # Sources whose articles can repeat in another: a title already in the library is skipped.
 SAME_ARTICLES = {"wikimed", "wikipedia"}
+
+
+# ---------- sources that aren't Kiwix books ----------
+# The documents, their addresses and the Internet Archive fallbacks are adapted from Survival LLM's
+# library/fetch_manuals.py and library/fetch_risk.py (MIT License, Copyright (c) 2026 Ronny Fernandez; see
+# LICENSE.survival-llm). Its copies of Wikipedia's risk articles are left out: this library has Wikipedia itself.
+
+ARCHIVE = "https://web.archive.org/web/2026id_/"  # the Internet Archive's raw copy of a page, for sites that refuse
+ARMY = "https://armypubs.army.mil/epubs/DR_pubs/DR_a/"
+WHO = "https://iris.who.int/server/api/core/bitstreams/"
+
+
+@dataclass(frozen=True)
+class Document:
+    file: str          # its name in raw/<source key>/
+    title: str
+    url: str
+    kind: str = "pdf"  # pdf, web, life-table (the SSA table, rewritten as lines) or wikihow (the CSV dump)
+    fallback: str = ""  # another address for the same file, for sites that refuse scripted downloads
+    sha256: str = ""   # when the publisher gives one
+    size: int = 0
+
+
+@dataclass(frozen=True)
+class DocumentSource:
+    key: str
+    label: str
+    topic: str
+    license: str
+    weight: float
+    documents: tuple
+
+
+def _archived(file, title, url, kind="pdf", fallback=None):
+    return Document(file, title, url, kind, fallback or ARCHIVE + url)
+
+
+DOCUMENTS = [
+    DocumentSource("survival-manuals", "U.S. government survival and first-aid manuals", "emergency",
+                   f"{US_GOV}, except Nuclear War Survival Skills (1986 additions copyright Cresson H. Kearny, "
+                   "reproduced with his notice) and the Emergency Response Guidebook 2024 (reproduction permitted by "
+                   "the participating governments, not for resale)", 1.3, (
+        _archived("afh10-644.pdf", "USAF AFH 10-644: SERE Operations (survival, evasion, field medicine)",
+                  "https://static.e-publishing.af.mil/production/1/af_a3/publication/afh10-644/afh10-644.pdf",
+                  fallback="https://web.archive.org/web/2025id_/https://static.e-publishing.af.mil/production/1/af_a3/"
+                           "publication/afh10-644/afh10-644.pdf"),
+        _archived("atp3-50-21.pdf", "US Army ATP 3-50.21: Survival", ARMY + "pdf/web/ARN12086_ATP%203-50x21%20FINAL%20WEB%202.pdf"),
+        _archived("atp4-02-11.pdf", "US Army ATP 4-02.11: Casualty Response, Tactical Combat Casualty Care and First "
+                  "Aid (2026)", ARMY + "ARN46159-ATP_4-02.11-000-WEB-1.pdf"),
+        _archived("tc21-3.pdf", "US Army TC 21-3: Cold Weather Survival and Operations", ARMY + "ARN45217-TC_21-3-000-WEB-1.pdf"),
+        _archived("atp4-25-12.pdf", "US Army ATP 4-25.12: Unit Field Sanitation", ARMY + "ARN44577-ATP_4-25.12-002-WEB-3.pdf"),
+        _archived("tbmed577.pdf", "US Army TB MED 577: Sanitary Control and Surveillance of Field Water Supplies",
+                  ARMY + "pdf/web/tbmed577.pdf"),
+        _archived("tbmed507.pdf", "US Army TB MED 507: Heat Stress Control and Heat Casualty Management",
+                  ARMY + "ARN43608-TB_MED_507-001-WEB-2.pdf"),
+        _archived("nwss.pdf", "Nuclear War Survival Skills (Cresson Kearny, ORNL-5037, 1979)",
+                  "https://www.osti.gov/servlets/purl/814213"),
+        _archived("are-you-ready.pdf", "FEMA: Are You Ready? An In-Depth Guide to Citizen Preparedness",
+                  "https://www.ready.gov/sites/default/files/2021-11/are-you-ready-guide.pdf"),
+        _archived("cert-basic.pdf", "FEMA CERT Basic Training Participant Manual",
+                  "https://www.ready.gov/sites/default/files/2019.CERT_.Basic_.PM_FINAL_508c.pdf"),
+        _archived("erg2024.pdf", "Emergency Response Guidebook 2024 (hazardous materials)",
+                  "https://www.phmsa.dot.gov/sites/phmsa.dot.gov/files/2024-04/ERG2024-Eng-Web-a.pdf",
+                  fallback="https://web.archive.org/web/20240806051758id_/https://www.phmsa.dot.gov/sites/phmsa.dot.gov/"
+                           "files/2024-04/ERG2024-Eng-Web-a.pdf"),
+        _archived("prolonged-casualty-care.pdf", "Joint Trauma System: Prolonged Casualty Care Guidelines (2021)",
+                  "https://jts.health.mil/assets/docs/cpgs/Prolonged_Casualty_Care_Guidelines_21_Dec_2021_ID91v1.1.pdf"),
+    )),
+    DocumentSource("first-aid-guides", "IFRC and WHO first-aid and emergency care guides", "medical",
+                   "IFRC guidelines: non-commercial use with acknowledgement. WHO publications: CC BY-NC-SA 3.0 IGO "
+                   "https://creativecommons.org/licenses/by-nc-sa/3.0/igo/ (WHO does not endorse this library)", 1.3, (
+        _archived("ifrc-2020.pdf", "IFRC International First Aid, Resuscitation and Education Guidelines 2020",
+                  "https://www.ifrc.org/sites/default/files/2022-02/EN_GFARC_GUIDELINES_2020.pdf"),
+        _archived("who-basic-emergency-care.pdf", "WHO-ICRC Basic Emergency Care (2018)",
+                  WHO + "63432b9f-8808-44c5-9692-cea717c0cbda/content"),
+        _archived("who-childbirth.pdf", "WHO: Managing Complications in Pregnancy and Childbirth (2017)",
+                  WHO + "3bda1306-da5d-487d-b2ad-aff995112a7a/content"),
+        _archived("who-drinking-water.pdf", "WHO: Guidelines for Drinking-water Quality (4th ed., 2022)",
+                  WHO + "69c17edd-ee26-425b-9d34-33799377e886/content"),
+    )),
+    DocumentSource("risk", "Risk and micromort references", "medical",
+                   "U.S. government statistics (SSA, CDC, NHTSA, NWS): public domain", 1.3, (
+        _archived("ssa-life-table.html", "Actuarial Life Table: chance of dying within a year at each age (Social "
+                  "Security, 2023)", "https://www.ssa.gov/oact/STATS/table4c6.html", kind="life-table"),
+        _archived("cdc-mortality-2024.pdf", "Mortality in the United States, 2024 (CDC NCHS Data Brief 548)",
+                  "https://www.cdc.gov/nchs/data/databriefs/db548.pdf"),
+        _archived("cdc-leading-causes-2024.pdf", "Deaths: Leading Causes for 2024, death rates by cause and age (CDC "
+                  "NCHS)", "https://www.cdc.gov/nchs/data/nvsr/nvsr75/nvsr75-07.pdf"),
+        _archived("nhtsa-crashes-2024.pdf", "Overview of Motor Vehicle Traffic Crashes in 2024 (NHTSA), deaths per mile "
+                  "driven", "https://crashstats.nhtsa.dot.gov/Api/Public/ViewPublication/813791"),
+        _archived("nws-lightning-odds.html", "How Dangerous is Lightning? Odds of being struck (National Weather "
+                  "Service)", "https://www.weather.gov/safety/lightning-odds", kind="web"),
+    )),
+    # The 2018 text dump (Koupaee and Wang); its size and SHA-256 are Hugging Face's, checked on 2026-10-25.
+    DocumentSource("wikihow", "wikiHow", "howto", f"CC BY-NC-SA 3.0 (non-commercial), wikiHow contributors {CC_BY_NC_SA}",
+                   1.0, (
+        Document("wikihowAll.csv", "wikiHow", "https://huggingface.co/datasets/Lajvi/wikihowAll/resolve/main/"
+                 "wikihowAll.csv", kind="wikihow",
+                 sha256="8ebf5bd485275af895aa83ea3e55c416fe76aa4fefc58e0b9e6d344852bde5aa", size=619172672),
+    )),
+]

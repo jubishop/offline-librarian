@@ -48,7 +48,9 @@ the [README](README.md) and the [design](docs/design.md). Its command is
 
 - Never commit library data, downloads, or indexes: several sources forbid
   redistribution.
-- Tests never touch the internet; fake web servers stand in for Kiwix.
+- Tests never touch the internet: fake web servers stand in for Kiwix, Ollama
+  and the document sites, and every test module imports `tests/offline.py`,
+  which makes any other connection fail.
 - Code adapted from Survival LLM keeps its notice and points to
   `LICENSE.survival-llm`.
 - Install launch agents (`bin/librarian embed install`, `serve install`) only
