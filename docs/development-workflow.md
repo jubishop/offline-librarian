@@ -19,8 +19,7 @@ Setup needs Git and Python 3.9 or later, and checks also need ShellCheck.
 `bin/setup` then runs `bin/setup-application`, which needs
 [uv](https://docs.astral.sh/uv/) and `pdftotext` (poppler) and installs the
 application's Python and packages into `.venv` from `uv.lock`.
-QMD and direnv are optional; setup reports skipped features. Install td and
-run `td init` as described in [task tracking](foundation/task-tracking.md).
+QMD and direnv are optional; setup reports skipped features.
 Create `.envrc` only when the project needs environment settings, and review
 it before running `direnv allow`; search does not need it.
 

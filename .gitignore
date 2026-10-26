@@ -9,7 +9,6 @@
 __pycache__/
 *.py[cod]
 worktrees/
-.todos/
 # project-starter:end
 
 .venv/

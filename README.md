@@ -145,9 +145,6 @@ Hosted projects record their primary remote in
 
 - [Memory](memory/README.md): durable guidance and non-derivable context.
 - [Docs](docs/README.md): designs, decisions, research, and reference guides.
-- [Task tracking](docs/foundation/task-tracking.md): install td, run `td init`
-  in the primary checkout, and use `td status` or `td monitor` for progress.
 
-Keep the existing issue tracker for shared work and link related issues from
-td. This project uses [Project Starter](https://github.com/jubishop/project-starter);
+Track work in the project's issue tracker. This project uses [Project Starter](https://github.com/jubishop/project-starter);
 `.project-starter.json` records its release.
