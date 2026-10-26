@@ -55,9 +55,9 @@ class Site:
         self.server.shutdown()
         self.server.server_close()
 
-    def book(self, name, flavour, data, mirrors=("/m1",), checksum=None):
+    def book(self, name, flavour, data, mirrors=("/m1",), checksum=None, edition="2026-10"):
         """Publish a book: its catalog entry, its Metalink file, and its file on each mirror."""
-        filename = f"{name}_{flavour or 'all'}_2026-10.zim"
+        filename = f"{name}_{flavour or 'all'}_{edition}.zim"
         urls = "".join(f'<url priority="{n + 1}">{self.url}{m}/{filename}</url>'
                        for n, m in enumerate(mirrors))
         self.files[f"/meta/{filename}.meta4"] = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -67,7 +67,7 @@ class Site:
         for m in mirrors:
             self.files.setdefault(f"{m}/{filename}", data)
         return filename, f"""<entry><name>{name}</name><flavour>{flavour}</flavour>
-<updated>2026-10-20T00:00:00Z</updated>
+<updated>{edition}-20T00:00:00Z</updated>
 <link rel="http://opds-spec.org/acquisition/open-access" type="application/x-zim"
  href="{self.url}/meta/{filename}.meta4" length="{len(data)}" /></entry>"""
 
