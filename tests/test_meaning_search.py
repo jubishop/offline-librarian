@@ -127,6 +127,22 @@ class MeaningSearchTest(LibraryFixture):
         self.assertEqual(titles[0], "title: Cold exposure")  # the smaller official source, then WikEM's three
         self.assertEqual(titles[-1], "title: Bread")  # Appropedia isn't official, so it comes last
 
+    def test_a_book_built_during_a_pass_is_embedded_in_the_same_pass(self):
+        # While WikEM is being embedded, MedlinePlus is built; it must not wait for the next pass.
+        built = []
+
+        def build_medlineplus_once(seconds):
+            if not built:
+                built.append(True)
+                write_book(self.home, "medlineplus.gov_en_all", "medlineplus.gov_en_all_2025-01.zim",
+                           [Page("medlineplus.gov/ency/article/000057.htm", "Cold exposure",
+                                 f"<html><body><main><p>{SHIVERING}</p><p>{REWARMING}</p></main></body></html>")])
+                self.build()
+
+        busy = self.fake(loaded=[["qwen3.8:27b-mlx"], []])  # one wait, during which the build happens
+        self.assertEqual(self.embed(busy, sleep=build_medlineplus_once), 4)
+        self.assertIn("title: Cold exposure", [text.split(" | text: ")[0] for text in busy.inputs()])
+
     def test_the_same_text_in_two_books_is_embedded_once(self):
         write_book(self.home, "wikipedia_en_medicine nopic", "wikipedia_en_medicine_nopic_2026-10.zim",
                    [HYPOTHERMIA])

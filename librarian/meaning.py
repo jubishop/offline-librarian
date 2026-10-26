@@ -277,7 +277,15 @@ class _Run:
                 raise MeaningUnavailable("the library was built before vectors were keyed by text; run "
                                          "librarian build to update it, then embed again")
             self.pending = _pending(self.home, self.store)
-            for first, last_id in _source_ranges(library):
+            planned, finished = set(_source_ranges(library)), set()
+            # Plan again after each source, so a book built or rebuilt during this pass (which can take days) is
+            # embedded in its turn instead of in the next pass.
+            while ranges := [r for r in _source_ranges(library) if r not in finished]:
+                if not set(ranges) <= planned:
+                    planned |= set(ranges)
+                    self.pending = _pending(self.home, self.store)
+                first, last_id = ranges[0]
+                finished.add((first, last_id))
                 last = first - 1
                 while rows := library.execute(
                         "SELECT p.id, p.article_id, p.start, p.end, a.title, p.hash FROM passages p "
