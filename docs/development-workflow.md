@@ -28,7 +28,9 @@ it before running `direnv allow`; search does not need it.
 Follow the [check schedule](foundation/engineering-policy.md#checks).
 `bin/check --full` runs `bin/check-application` after the foundation checks.
 It runs the unit tests in `tests/` with the standard library's `unittest` in
-`.venv`, treating unclosed resources as errors:
+`.venv`, treating unclosed resources as errors. Its runner, `tests/run.py`,
+collects garbage after each test, so a leak that Python notices only then, and
+would otherwise print and ignore, fails the test that caused it:
 
 ```sh
 bin/check-application
