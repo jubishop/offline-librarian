@@ -12,9 +12,9 @@ sources.
 
 ## Decisions
 
-All of these were made by the user on 2026-10-25, while they evaluated
-[Survival LLM](https://github.com/anonnerdfrenzy/survival-llm), an offline
-survival assistant built on the same idea.
+The user made these on 2026-10-25, while they evaluated [Survival
+LLM](https://github.com/anonnerdfrenzy/survival-llm), an offline survival
+assistant built on the same idea; later changes give their dates.
 
 - **For one person, on one Mac.** There are no installers, Windows support,
   model picker, or self-updater. The user chose this over a public app or
@@ -35,14 +35,20 @@ survival assistant built on the same idea.
   vector, alongside a full-text keyword index, so a question can reach the
   whole library by either route. The user accepted an index build of a couple
   of days, run in the background.
-- **Three ways in.** A terminal command, a page in the browser, and a pi
-  skill, all on one shared search-and-answer core. Answers default to
-  `qwen3.8:27b-mlx`, the default model of the user's pi setup.
+- **Two ways in.** A terminal command and a pi skill, on one shared
+  search-and-answer core. Answers default to `qwen3.8:27b-mlx`, the default
+  model of the user's pi setup. On 2026-10-25 the user chose three ways in,
+  with a page in the browser as well, served from the Mac to the home network
+  and Tailscale. On 2026-10-28 they removed the page and its server, to rely
+  on the terminal and the pi skill alone: `librarian search` already searched
+  without the AI, `librarian read` opened whole articles, and the terminal and
+  the skill gained the page's saved conversations and follow-ups (see
+  [Saved conversations](#saved-conversations)).
 - **Thinking matches pi.** On 2026-10-25 the user chose to have `librarian ask`
-  and the browser page use the thinking level from their pi settings
-  (`defaultThinkingLevel` in `~/.pi/agent/settings.json`, medium at the time),
-  so both behave alike, rather than defaulting thinking off for speed. The
-  tradeoff is slower answers, roughly 15 to 40 seconds more with Qwen 27B.
+  use the thinking level from their pi settings (`defaultThinkingLevel` in
+  `~/.pi/agent/settings.json`, medium at the time), so it behaves as pi does,
+  rather than defaulting thinking off for speed. The tradeoff is slower
+  answers, roughly 15 to 40 seconds more with Qwen 27B.
 - **Embedding shares the Mac the way Stories' index does.** On 2026-10-25 the
   user chose to run `librarian embed` the way their Stories project runs its
   embedding index: as a per-user launch agent with the Background process
@@ -78,9 +84,10 @@ survival assistant built on the same idea.
   embedded.
 - **Pushover notifications on finish and failure.** On 2026-10-25 the user
   chose, as in their Stories index, one Pushover message when the first full
-  embedding finishes, and one whenever a monthly update or the page server
-  fails and needs them; routine successful updates send nothing. Messages
-  can't be sent while the internet is down.
+  embedding finishes, and one whenever a monthly update fails and needs them;
+  routine successful updates send nothing. Messages can't be sent while the
+  internet is down. The browser page's server also reported its crashes until
+  it was removed on 2026-10-28.
 - **A retrieval test set checks quality.** On 2026-10-25 the user chose a set
   of about 30 to 40 emergency, medical and how-to questions, each with the
   articles a good answer must find. It runs offline in minutes and scores
@@ -93,31 +100,6 @@ survival assistant built on the same idea.
   library is never published or committed, since several sources forbid
   redistribution or commercial use.
 
-## The browser page
-
-The user chose these on 2026-10-25:
-
-- **It asks, answers and cites.** A question streams an answer with its cited
-  passages, and each passage opens its whole article.
-- **Follow-up questions.** The conversation is kept, so a follow-up is
-  answered with the earlier context, and every answer still searches first.
-- **Search without the AI.** A plain search lists matching passages with no
-  model, for when Ollama is off or to save battery.
-- **One saved history on the Mac**, shared by every device that opens the
-  page, so a question asked on a phone shows up on the laptop. Anyone on the
-  network can read it; the user chose that over keeping history in each
-  browser.
-- **Open to the home network and Tailscale, with no password.** The user
-  doesn't mind anyone on their Wi-Fi or tailnet using it. The server answers
-  only requests addressed to the Mac's own names and addresses (localhost, its
-  LAN and Tailscale addresses, `<name>.local`, its Tailscale name), so a web
-  page can't reach it through DNS rebinding; this needs no password.
-- **Nothing from the internet.** The page loads no scripts, fonts or styles
-  from elsewhere, so it works with the internet down.
-- **Always running.** Its server is a per-user launch agent that starts at
-  login, restarts after a crash, and listens on a fixed port, so a phone's
-  bookmark always works. Qwen loads only when a question needs it.
-
 ## Saved conversations
 
 On 2026-10-28 the user decided to remove the browser page but keep its saved
@@ -127,7 +109,7 @@ They chose these then:
 - **`librarian ask` saves every answer.** With no flag it starts a new
   conversation. `--continue` follows up on the most recent conversation and
   `--conversation ID` on a given one, sending the earlier turns as context,
-  as the page does; every answer still searches first. It prints the
+  as the page did; every answer still searches first. It prints the
   conversation's id, so a follow-up can name it.
 - **The pi skill saves each answer with a command.** pi's own model writes
   the answer, so the skill tells it to run `librarian history add` after each
@@ -187,9 +169,8 @@ search again with other words when the passages fall short, to read whole
 articles with `librarian read`, and to cite what it used. Follow-ups then work
 as in any pi conversation. Searching depends on the model following the
 skill, and `/skill:offline-librarian` forces the skill to load; `librarian ask`
-and the browser page search in code. Saving works the same way: the skill has
-pi save each answer with `librarian history add` (see
-[Saved conversations](#saved-conversations)).
+searches in code. Saving works the same way: the skill has pi save each answer
+with `librarian history add` (see [Saved conversations](#saved-conversations)).
 
 The skill is installed for pi only, linked from `~/.pi/agent/skills`, not
 shared through `~/.agents/skills` with the user's other harnesses. The user
@@ -239,17 +220,6 @@ These were made while building, not by the user, and can change.
   million rows on the M5 Pro (2 million measured, 2026-10-25), so no
   approximate index or extra dependency is needed. Keyword and meaning
   rankings are merged by reciprocal rank fusion (k = 60).
-- **The page server is the standard library's.** `librarian serve` is a
-  `ThreadingHTTPServer` on port 8740 and every interface. It checks each
-  request's Host against the Mac's names and addresses (hostname,
-  `LocalHostName.local`, `ifconfig` addresses, and Tailscale's when its CLI is
-  installed), refreshed every minute, and takes writes only as
-  `application/json` with a matching Origin, which a cross-site page can't
-  send without a CORS preflight the server never grants. Answers stream as
-  server-sent events. A `server.running` marker left by a run that never
-  stopped cleanly counts as a crash, and launchd's SIGTERM counts as a clean
-  stop. The page is one HTML file with inline styles and scripts, and it
-  escapes everything before formatting it.
 - **History is searched with FTS5.** `history.sqlite` keeps its
   `conversations` and `messages` tables, and an external-content FTS5 table
   (Porter stemming, as in the library) indexes each message's text. SQLite
@@ -264,7 +234,7 @@ These were made while building, not by the user, and can change.
   `history add` prints the whole id for pi.
 - **A pi turn keeps only what it cited.** pi's answers cite passages by title
   rather than number, so `history add` numbers the passages it is given in
-  order and marks them all cited, which the page shows as the answer's
+  order and marks them all cited, which `history show` lists as the answer's
   sources. The passages pi read but didn't cite aren't known, so they aren't
   saved.
 - **Ollama makes the vectors**, with EmbeddingGemma's retrieval prompts

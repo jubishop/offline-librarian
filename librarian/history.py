@@ -1,9 +1,8 @@
-"""Saved conversations: one history on the Mac, kept by librarian ask, by pi through the skill's librarian history
-add, and by the browser page, and read by all three.
+"""Saved conversations: one history on the Mac, kept by librarian ask and by pi through the skill's librarian
+history add, and read by both.
 
-They live in history.sqlite beside the library. Anyone who can reach the page can read them; the user chose that
-over keeping history in each browser (docs/design.md#the-browser-page). A full-text index over every question and
-answer finds conversations by their words; triggers keep it current, whichever code saves a message.
+They live in history.sqlite beside the library (docs/design.md#saved-conversations). A full-text index over every
+question and answer finds conversations by their words; triggers keep it current, whichever code saves a message.
 """
 import json
 import os
@@ -114,14 +113,6 @@ class History:
         self.db.execute("UPDATE conversations SET updated=? WHERE id=?", (now, conversation_id))
         self.db.execute("COMMIT")
         return conversation_id
-
-    def exists(self, conversation_id):
-        return self.db.execute("SELECT 1 FROM conversations WHERE id=?", (conversation_id,)).fetchone() is not None
-
-    def drop_if_empty(self, conversation_id):
-        """Forget a new conversation whose first answer never finished."""
-        if not self.db.execute("SELECT 1 FROM messages WHERE conversation_id=?", (conversation_id,)).fetchone():
-            self.db.execute("DELETE FROM conversations WHERE id=?", (conversation_id,))
 
     def delete(self, conversation_id):
         self.db.execute("BEGIN")

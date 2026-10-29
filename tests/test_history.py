@@ -1,5 +1,5 @@
 """Saved conversations: librarian ask saves its answers, pi saves its own with librarian history add, and
-librarian history lists, shows, searches and deletes them, all in one history.sqlite the browser page reads too."""
+librarian history lists, shows, searches and deletes them, all in one history.sqlite."""
 import offline  # noqa: F401  (tests never reach the internet)
 import json
 import os
@@ -9,10 +9,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import urllib.request
 
 from fake_ollama import FakeOllama
-from librarian import history, server
+from librarian import history
 from test_meaning_search import LibraryFixture
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -165,19 +164,14 @@ class HistoryCommandsTest(LibraryFixture):
         self.assertEqual(gone.returncode, 1)
         self.assertIn("There is no conversation", gone.stderr)
 
-    def test_the_browser_page_reads_what_the_commands_saved(self):
+    def test_ask_follows_up_on_a_conversation_pi_saved(self):
         passage = self.passage_id("shivering confused")
         conversation = self.add("someone is shivering and confused", PI_ANSWER, passage)
         self.ask("--conversation", conversation, "what if it is a baby?")
-        page = server.Server(self.home, port=0, bind="127.0.0.1", ollama_host=self.chat.host,
-                             chat_settings=("qwen-test", False))
-        page.start()
-        self.addCleanup(page.stop)
-        with urllib.request.urlopen(f"http://127.0.0.1:{page.port}/api/conversations/{conversation}",
-                                    timeout=30) as resp:
-            saved = json.load(resp)
-        roles = [m["role"] for m in saved["messages"]]
-        self.assertEqual(roles, ["user", "assistant", "user", "assistant"])
+        self.assertEqual([m["content"] for m in self.chat.chats[-1]["messages"][1:3]],
+                         ["someone is shivering and confused", PI_ANSWER])
+        (saved,) = self.saved()
+        self.assertEqual([m["role"] for m in saved["messages"]], ["user", "assistant", "user", "assistant"])
         pi, asked = saved["messages"][1], saved["messages"][3]
         self.assertEqual((pi["cited"], pi["passages"][0]["n"], pi["passages"][0]["id"]), ([1], 1, passage))
         self.assertIn("Shivering stops", pi["passages"][0]["text"])

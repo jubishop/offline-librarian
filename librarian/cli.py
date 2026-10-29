@@ -317,64 +317,6 @@ def history_add(args, parser):
     return 0
 
 
-def page_addresses(port):
-    """Addresses a browser on this Mac or the home network can open the page at."""
-    from librarian import server
-    names = server.allowed_hosts()
-    shown = [f"http://localhost:{port}/"]
-    shown += sorted(f"http://{n}:{port}/" for n in names if n.endswith(".local"))
-    shown += sorted(f"http://{n}:{port}/" for n in names if n.endswith(".ts.net"))  # Tailscale's MagicDNS name
-    shown += sorted(f"http://{n}:{port}/" for n in names
-                    if n.count(".") == 3 and not n.startswith(("127.", "169.254.")) and n.replace(".", "").isdigit())
-    return shown
-
-
-def serve(args, parser):
-    import signal
-    from librarian import agent, notify, server
-    if args.action == "install":
-        try:
-            path = agent.install_server(home(), args.port)
-        except RuntimeError as exc:
-            print(f"Couldn't install the page server: {exc}.", file=sys.stderr)
-            return 1
-        print(f"Installed {path}. The page is always running at:")
-        for address in page_addresses(args.port):
-            print(f"  {address}")
-        return 0
-    if args.action == "uninstall":
-        agent.uninstall(agent.SERVER)
-        print("Removed the page server. Saved conversations are kept.")
-        return 0
-    if args.action == "status":
-        running = agent.running(agent.SERVER)
-        print(f"page server: {'running' if running else 'not installed'}")
-        if running:
-            for address in page_addresses(args.port):
-                print(f"  {address}")
-        return 0
-    page = server.Server(home(), port=args.port, bind=args.bind, notify=notify.pushover(),
-                         log=lambda line: print(line, flush=True))
-    try:
-        page.start()
-    except OSError as exc:
-        print(f"Couldn't start the page server on port {args.port}: {exc}.", file=sys.stderr)
-        return 1
-
-    def stop(signum, frame):
-        raise SystemExit(0)
-    signal.signal(signal.SIGTERM, stop)  # launchd stops agents with SIGTERM: a clean stop, not a crash
-    print(f"Serving the page at http://{'localhost' if args.bind in ('0.0.0.0', '127.0.0.1') else args.bind}:"
-          f"{page.port}/", flush=True)
-    try:
-        signal.pause()
-    except (KeyboardInterrupt, SystemExit):
-        pass
-    finally:
-        page.stop()
-    return 0
-
-
 def update(args, parser):
     from librarian import agent, notify, priority, update as updater
     if args.action == "install":
@@ -471,9 +413,9 @@ def main(argv=None):
 
     history_parser = commands.add_parser(
         "history", help="list, show, search, delete and save conversations",
-        description="List the most recent saved conversations, from librarian ask, pi and the browser page. ACTION "
-                    "is show, search, delete or add. An ID can be just the start of one, as listed here, and last "
-                    "means the most recent conversation.")
+        description="List the most recent saved conversations, from librarian ask and pi. ACTION is show, search, "
+                    "delete or add. An ID can be just the start of one, as listed here, and last means the most "
+                    "recent conversation.")
     history_parser.add_argument("--json", dest="list_json", action="store_true", help="print them as JSON")
     history_parser.add_argument("--limit", type=int, default=20, help="how many (default 20)")
     history_parser.set_defaults(run=history_list)
@@ -504,16 +446,6 @@ def main(argv=None):
     add_parser.add_argument("--question", required=True, help="the question that was answered")
     add_parser.add_argument("--conversation", metavar="ID", help="add to this conversation instead of starting one")
     add_parser.set_defaults(run=history_add)
-
-    serve_parser = commands.add_parser(
-        "serve", help="run the browser page",
-        description="Run the browser page on every network this Mac is on (the home Wi-Fi, and Tailscale when it "
-                    "is connected), with no password. ACTION is run (the default: serve here until stopped), "
-                    "install (keep it always running, as a launch agent), uninstall or status.")
-    serve_parser.add_argument("action", nargs="?", default="run", choices=["run", "install", "uninstall", "status"])
-    serve_parser.add_argument("--port", type=int, default=8740, help="the port to listen on (default 8740)")
-    serve_parser.add_argument("--bind", default="0.0.0.0", help="the address to listen on (default: all of them)")
-    serve_parser.set_defaults(run=serve)
 
     update_parser = commands.add_parser(
         "update", help="bring the library's books up to date",

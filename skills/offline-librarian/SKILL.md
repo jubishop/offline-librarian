@@ -50,9 +50,9 @@ address, sometimes empty) and `text`. It searches by keyword and by meaning.
 ## Save each answer
 
 After each answer, save it to the library's history, so the user can find it
-again from pi, the terminal or the browser page. Run this with the user's
-question, the `id` of each passage you cited, and your answer exactly as you
-wrote it between the `LIBRARIAN_ANSWER` lines:
+again from pi or the terminal. Run this with the user's question, the `id` of
+each passage you cited, and your answer exactly as you wrote it between the
+`LIBRARIAN_ANSWER` lines:
 
 ```sh
 librarian history add --question 'QUESTION' PASSAGE_ID PASSAGE_ID <<'LIBRARIAN_ANSWER'

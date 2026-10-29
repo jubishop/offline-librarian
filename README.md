@@ -3,7 +3,7 @@
 Ask questions offline from a local Kiwix library. Every question searches all
 of it, by keyword and by meaning with EmbeddingGemma, and a local Ollama model
 answers from the passages it found, showing each source. Use it from the
-terminal, a browser page, or a pi skill.
+terminal or a pi skill.
 
 It needs macOS or Linux, [uv](https://docs.astral.sh/uv/), and `pdftotext`
 from poppler. Run `bin/setup` once to install its Python and packages. It is
@@ -39,8 +39,8 @@ found by keyword only. `search` uses the vectors whenever they exist, and says
 so when Ollama can't be reached and it falls back to keywords. Ollama's address
 comes from `OLLAMA_HOST`, as for Ollama itself.
 
-To run it in the background instead, install the worker from this checkout (as for `serve install`, the
-launch agent runs the code it was installed from):
+To run it in the background instead, install the worker from this checkout (the launch agent runs the code
+it was installed from):
 
 ```sh
 bin/librarian embed install    # a launch agent; starts now and at every login
@@ -59,8 +59,7 @@ Background priority.
 ## Saved conversations
 
 Every answer is saved in `history.sqlite` beside the library: answers from
-`ask`, from pi through the skill, and from the browser page, all in one
-history that each of them can read.
+`ask` and from pi through the skill, all in one history that both can read.
 
 ```sh
 bin/librarian ask "someone is shivering and confused after being in the cold"
@@ -92,28 +91,6 @@ those books, and deletes the superseded files. The embedding worker then
 embeds whatever text is new; text that hasn't changed keeps its vectors. It
 runs at Background priority, and launchd runs a missed month when the Mac
 next wakes. Problems are sent through Pushover.
-
-## Use it in a browser
-
-```sh
-bin/librarian serve install   # always running, from login on
-bin/librarian serve status    # and the addresses to open
-bin/librarian serve           # or just run it here until Ctrl-C
-```
-
-The page is at `http://localhost:8740/` on this Mac and at
-`http://<name>.local:8740/` or the Mac's address from any device on the same
-Wi-Fi, or on Tailscale when it is connected. There is no password. It asks
-(answers stream in, cited, with follow-up questions), searches without the
-AI, and opens any cited article with the passage highlighted. Its
-conversations are the [saved conversations](#saved-conversations), shared by
-every device that opens the page.
-
-The server only answers requests addressed to this Mac's own names and
-addresses, and only takes questions as JSON from its own page, so other web
-pages can't use it through your browser. The page loads nothing from the
-internet. If the server crashes and launchd restarts it, it says so through
-Pushover, at most once an hour.
 
 ## Use it from pi
 
