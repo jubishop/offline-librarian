@@ -50,8 +50,8 @@ the [README](README.md) and the [design](docs/design.md). Its command is
   which makes any other connection fail.
 - Code adapted from Survival LLM keeps its notice and points to
   `LICENSE.survival-llm`.
-- Install launch agents (`bin/librarian embed install`, `serve install`) only
+- Install launch agents (`bin/librarian embed install`, `update install`) only
   from the primary checkout: an agent runs the code it was installed from.
-- Don't test `librarian ask`, `history add` or the browser page against the
-  real library's history, since each saves to it: delete any test
-  conversations afterwards with `bin/librarian history delete ID`.
+- Don't test `librarian ask` or `history add` against the real library's
+  history, since each saves to it: delete any test conversations afterwards
+  with `bin/librarian history delete ID`.

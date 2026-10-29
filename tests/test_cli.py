@@ -205,22 +205,6 @@ esac
         self.assertFalse(os.path.exists(path))
         self.assertIn("background worker: not installed", self.run_librarian("embed", "status").stdout)
 
-    def test_serve_install_writes_the_page_server_agent(self):
-        import plistlib
-        result = self.run_librarian("serve", "install")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("http://", result.stdout)
-        path = os.path.join(self.user, "Library", "LaunchAgents", "org.jubishop.offline-librarian.server.plist")
-        with open(path, "rb") as f:
-            agent = plistlib.load(f)
-        self.assertEqual(agent["ProcessType"], "Standard")
-        self.assertTrue(agent["KeepAlive"] and agent["RunAtLoad"])
-        self.assertEqual(agent["ProgramArguments"][1:], ["serve", "--port", "8740"])
-        self.assertIn("page server: running", self.run_librarian("serve", "status").stdout)
-        self.assertEqual(self.run_librarian("serve", "uninstall").returncode, 0)
-        self.assertFalse(os.path.exists(path))
-        self.assertIn("page server: not installed", self.run_librarian("serve", "status").stdout)
-
     def test_update_install_schedules_a_monthly_background_job(self):
         import plistlib
         result = self.run_librarian("update", "install")
@@ -242,28 +226,6 @@ esac
         self.assertIn("(paused)", self.run_librarian("embed", "status").stdout)
         self.run_librarian("embed", "resume")
         self.assertNotIn("(paused)", self.run_librarian("embed", "status").stdout)
-
-
-class ServeCommandTest(unittest.TestCase):
-    def test_serves_until_stopped_and_a_stop_is_clean(self):
-        import signal
-        import urllib.request
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        home = tmp.name
-        env = {**os.environ, "OFFLINE_LIBRARIAN_HOME": home}
-        process = subprocess.Popen([sys.executable, "-B", "-m", "librarian", "serve", "--port", "0", "--bind",
-                                    "127.0.0.1"], cwd=ROOT, env=env, stdout=subprocess.PIPE, text=True)
-        self.addCleanup(process.kill)
-        line = process.stdout.readline()
-        port = int(line.rsplit(":", 1)[1].strip().rstrip("/"))
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=30) as resp:
-            self.assertIn("Offline Librarian", resp.read().decode())
-        self.assertTrue(os.path.exists(os.path.join(home, "server.running")))
-        process.send_signal(signal.SIGTERM)  # how launchd stops it
-        self.assertEqual(process.wait(timeout=30), 0)
-        process.stdout.close()
-        self.assertFalse(os.path.exists(os.path.join(home, "server.running")))
 
 
 if __name__ == "__main__":
