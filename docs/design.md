@@ -118,6 +118,34 @@ The user chose these on 2026-10-25:
   login, restarts after a crash, and listens on a fixed port, so a phone's
   bookmark always works. Qwen loads only when a question needs it.
 
+## Saved conversations
+
+On 2026-10-28 the user decided to remove the browser page but keep its saved
+history, so the terminal and the pi skill now write to it and read it too.
+They chose these then:
+
+- **`librarian ask` saves every answer.** With no flag it starts a new
+  conversation. `--continue` follows up on the most recent conversation and
+  `--conversation ID` on a given one, sending the earlier turns as context,
+  as the page does; every answer still searches first. It prints the
+  conversation's id, so a follow-up can name it.
+- **The pi skill saves each answer with a command.** pi's own model writes
+  the answer, so the skill tells it to run `librarian history add` after each
+  one with the question, its answer and the ids of the passages it cited. The
+  command looks up each passage's title, source and URL itself, so pi can't
+  misstate them. It prints a conversation id, which the skill passes on
+  follow-ups in the same pi session so they join the same conversation. This
+  relies on the model following the skill, as searching already does. A pi
+  extension and importing pi's session files were considered and turned down.
+- **Reading and managing history.** `librarian history` lists recent
+  conversations, `history show` prints one with its questions, answers and
+  cited sources, `history search` finds conversations by the words in their
+  questions and answers, and `history delete` removes one. The read commands
+  take `--json`, and the skill points pi at `history search` and `show` for
+  when the user refers to an earlier conversation.
+- **The existing schema and rows stay.** History is extended only as search
+  needs, migrating existing databases in place.
+
 ## Sources
 
 Survival LLM's full personal build, as listed in its `library/fetch_zims.py`,
@@ -159,7 +187,9 @@ search again with other words when the passages fall short, to read whole
 articles with `librarian read`, and to cite what it used. Follow-ups then work
 as in any pi conversation. Searching depends on the model following the
 skill, and `/skill:offline-librarian` forces the skill to load; `librarian ask`
-and the browser page search in code.
+and the browser page search in code. Saving works the same way: the skill has
+pi save each answer with `librarian history add` (see
+[Saved conversations](#saved-conversations)).
 
 The skill is installed for pi only, linked from `~/.pi/agent/skills`, not
 shared through `~/.agents/skills` with the user's other harnesses. The user
@@ -220,6 +250,23 @@ These were made while building, not by the user, and can change.
   stopped cleanly counts as a crash, and launchd's SIGTERM counts as a clean
   stop. The page is one HTML file with inline styles and scripts, and it
   escapes everything before formatting it.
+- **History is searched with FTS5.** `history.sqlite` keeps its
+  `conversations` and `messages` tables, and an external-content FTS5 table
+  (Porter stemming, as in the library) indexes each message's text. SQLite
+  triggers keep it current, so the index also follows messages saved by code
+  that predates it, and a database without the index is indexed once when it
+  is first opened. A search matches conversations that hold every word
+  between their messages, skipping the library's stopwords, most recent
+  first.
+- **Conversation ids can be shortened.** Ids are 32 hexadecimal characters;
+  the terminal lists their first 8, and every command that takes an id
+  accepts any start of one that names a single conversation, or `last`.
+  `history add` prints the whole id for pi.
+- **A pi turn keeps only what it cited.** pi's answers cite passages by title
+  rather than number, so `history add` numbers the passages it is given in
+  order and marks them all cited, which the page shows as the answer's
+  sources. The passages pi read but didn't cite aren't known, so they aren't
+  saved.
 - **Ollama makes the vectors**, with EmbeddingGemma's retrieval prompts
   (`title: … | text: …` for passages, `task: search result | query: …` for
   questions). It already runs the model on the GPU through MLX.
