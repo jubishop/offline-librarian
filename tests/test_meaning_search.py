@@ -76,7 +76,9 @@ class LibraryFixture(unittest.TestCase):
 class MeaningSearchTest(LibraryFixture):
     def test_finds_passages_that_share_no_words_with_the_question(self):
         self.embed()
-        self.assertEqual(Library(os.path.join(self.home, "library.sqlite")).search("frozen and chilly"), [])
+        keywords_only = Library(os.path.join(self.home, "library.sqlite"))
+        self.addCleanup(keywords_only.close)
+        self.assertEqual(keywords_only.search("frozen and chilly"), [])
         self.assertEqual(self.library().search("frozen and chilly")[0].title, "Hypothermia")
 
     def test_keyword_matches_still_count(self):

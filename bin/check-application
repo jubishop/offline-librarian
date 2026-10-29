@@ -8,4 +8,4 @@ if [ ! -x "$python" ]; then
   echo "Offline Librarian isn't set up yet: run bin/setup." >&2
   exit 1
 fi
-"$python" -B -W error::ResourceWarning -m unittest discover -s tests
+PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" "$python" -B -W error::ResourceWarning tests/run.py discover -s tests
