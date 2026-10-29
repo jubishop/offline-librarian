@@ -56,6 +56,30 @@ a Pushover notification (with the keys in `~/.env`) when the first full pass
 finishes or a pass fails. Builds and embedding from the terminal also run at
 Background priority.
 
+## Saved conversations
+
+Every answer is saved in `history.sqlite` beside the library: answers from
+`ask`, from pi through the skill, and from the browser page, all in one
+history that each of them can read.
+
+```sh
+bin/librarian ask "someone is shivering and confused after being in the cold"
+bin/librarian ask --continue "what if it is a baby?"     # the most recent conversation
+bin/librarian ask --conversation 3f2a8c1e "and a dog?"   # a given one
+bin/librarian history                                    # recent conversations: id, date, title
+bin/librarian history show last                          # or an id
+bin/librarian history search hypothermia baby            # conversations holding every word
+bin/librarian history delete 3f2a8c1e
+```
+
+`ask` starts a new conversation unless it follows up on one, and prints the
+conversation's id after the answer. A follow-up sends the earlier questions
+and answers to the model as context, and still searches the library first.
+An id can be shortened to its start, as `history` lists it. The read commands
+take `--json`. `history add` saves an answer written elsewhere: pi runs it
+after each answer, with the ids of the passages it cited, and the command
+looks up their titles, sources and addresses in the library.
+
 ## Keep it current
 
 ```sh
@@ -81,9 +105,9 @@ The page is at `http://localhost:8740/` on this Mac and at
 `http://<name>.local:8740/` or the Mac's address from any device on the same
 Wi-Fi, or on Tailscale when it is connected. There is no password. It asks
 (answers stream in, cited, with follow-up questions), searches without the
-AI, and opens any cited article with the passage highlighted. Conversations
-are saved on the Mac in `history.sqlite`, shared by every device that opens
-the page.
+AI, and opens any cited article with the passage highlighted. Its
+conversations are the [saved conversations](#saved-conversations), shared by
+every device that opens the page.
 
 The server only answers requests addressed to this Mac's own names and
 addresses, and only takes questions as JSON from its own page, so other web
@@ -95,7 +119,10 @@ Pushover, at most once an hour.
 
 The [pi](https://github.com/badlogic/pi-mono) skill in
 `skills/offline-librarian` has pi's model search the library before every
-answer, read whole articles when the details matter, and cite what it used.
+answer, read whole articles when the details matter, cite what it used, and
+save each answer with `librarian history add`, so it joins the
+[saved conversations](#saved-conversations). When you mention an earlier
+conversation, it finds it with `history search` and `history show`.
 Link the skill into pi and the command onto your PATH from this checkout:
 
 ```sh

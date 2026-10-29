@@ -52,5 +52,6 @@ the [README](README.md) and the [design](docs/design.md). Its command is
   `LICENSE.survival-llm`.
 - Install launch agents (`bin/librarian embed install`, `serve install`) only
   from the primary checkout: an agent runs the code it was installed from.
-- Don't test the browser page against the real library's history: delete any
-  test conversations from `history.sqlite` afterwards.
+- Don't test `librarian ask`, `history add` or the browser page against the
+  real library's history, since each saves to it: delete any test
+  conversations afterwards with `bin/librarian history delete ID`.

@@ -47,6 +47,45 @@ address, sometimes empty) and `text`. It searches by keyword and by meaning.
   weaken a safety rule, such as "if you must" run an engine indoors.
 - If official sources disagree, say so and give both, with their sources.
 
+## Save each answer
+
+After each answer, save it to the library's history, so the user can find it
+again from pi, the terminal or the browser page. Run this with the user's
+question, the `id` of each passage you cited, and your answer exactly as you
+wrote it between the `LIBRARIAN_ANSWER` lines:
+
+```sh
+librarian history add --question 'QUESTION' PASSAGE_ID PASSAGE_ID <<'LIBRARIAN_ANSWER'
+YOUR ANSWER
+LIBRARIAN_ANSWER
+```
+
+- Give only the ids of passages you cited; the command looks up their titles,
+  sources and addresses itself. Give none when the library had nothing.
+- It prints `Conversation:` and an id. For each later answer in this session,
+  add `--conversation ID` with that id, so it joins the same conversation:
+  `librarian history add --conversation ID --question 'QUESTION' PASSAGE_ID ...`.
+- Quote the question for the shell: inside single quotes, write each `'` as
+  `'\''`.
+- If it says there is no passage with an id, run it again with the ids you
+  cited. If it fails otherwise, tell the user the answer wasn't saved.
+
+## Earlier conversations
+
+When the user refers to an earlier conversation, such as "what did the library
+say about burns last week", find it in the history:
+
+```sh
+librarian history search --json WORDS
+librarian history show --json ID
+```
+
+`search` lists the conversations whose questions and answers hold every word,
+most recent first, each with its `id`, `title` (its first question) and
+`updated`. `show` prints one conversation's `turns`, each with its `question`,
+`answer` and the `sources` it cited. `librarian history --json` lists the most
+recent conversations.
+
 ## When the library has nothing
 
 If no search finds passages that answer the question, start with: "The library

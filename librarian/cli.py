@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import sys
+from contextlib import closing
 
 from librarian import kiwix, sources
 
@@ -42,14 +43,17 @@ def library_path():
     return os.path.join(home(), "library.sqlite")
 
 
-def open_library(model=None):
-    """The library, searching by meaning too when its passages have vectors; None after saying how to build one."""
-    from librarian import meaning
+def open_library(model=None, by_meaning=True):
+    """The library, searching by meaning too when its passages have vectors and by_meaning is set; None after saying
+    how to build one."""
     from librarian.library import Library
     if not os.path.exists(library_path()):
         print(f"There is no library at {library_path()} yet. Run librarian fetch, then librarian build.",
               file=sys.stderr)
         return None
+    if not by_meaning:
+        return Library(library_path())
+    from librarian import meaning
     embedder = meaning.Embedder(model=model or meaning.DEFAULT_MODEL)
     return Library(library_path(), meaning=meaning.Meaning(home(), embedder))
 
@@ -149,35 +153,168 @@ def search(args, parser):
     return 0
 
 
+def source_line(passage):
+    url = f", {passage['url']}" if passage["url"] else ""
+    return f"[{passage['n']}] {passage['title']}, {passage['source']}{url}"
+
+
+def open_history():
+    from librarian import history
+    os.makedirs(home(), exist_ok=True)
+    return history.History(home())
+
+
+def find_conversation(store, name):
+    """The id of the conversation name means, or None after saying why there isn't one."""
+    found = store.find(name)
+    if len(found) == 1:
+        return found[0]
+    if name == "last":
+        print("There are no saved conversations yet.", file=sys.stderr)
+    elif found:
+        print(f"More than one conversation starts with {name}; give more of its id.", file=sys.stderr)
+    else:
+        print(f"There is no conversation {name}. Run librarian history to list them.", file=sys.stderr)
+    return None
+
+
 def ask(args, parser):
     from librarian import answer
     library = open_library()
     if not library:
         return 1
-    model, think = answer.pi_settings()
-    chat = answer.Chat(model=args.model or model, think=think if args.think is None else args.think == "on")
-    passages, failed = [], False
-    for event in answer.ask(library, " ".join(args.question), chat=chat):
-        if event["type"] == "passages":
-            passages = event["passages"]
-            if event.get("search_problem"):
-                print(event["search_problem"], file=sys.stderr)
-        elif event["type"] == "thinking":
-            print("Thinking…", file=sys.stderr, flush=True)
-        elif event["type"] == "text":
-            print(event["text"], end="", flush=True)
-        elif event["type"] == "error":
-            print(f"\nCouldn't answer: {event['message']}.", file=sys.stderr)
-            failed = True
-        elif event["type"] == "done":
-            print()
-            by_number = {p["n"]: p for p in passages}
-            if event["cited"]:
-                print("\nSources:")
-                for n in event["cited"]:
-                    p = by_number[n]
-                    print(f"[{n}] {p['title']}, {p['source']}" + (f", {p['url']}" if p["url"] else ""))
+    with closing(open_history()) as store:
+        conversation = None
+        if args.follow_up:
+            conversation = find_conversation(store, args.follow_up)
+            if not conversation:
+                return 1
+        model, think = answer.pi_settings()
+        chat = answer.Chat(model=args.model or model, think=think if args.think is None else args.think == "on")
+        question, passages, failed = " ".join(args.question), [], False
+        earlier = store.turns(conversation) if conversation else []
+        for event in answer.ask(library, question, history=earlier, chat=chat):
+            if event["type"] == "passages":
+                passages = event["passages"]
+                if event.get("search_problem"):
+                    print(event["search_problem"], file=sys.stderr)
+            elif event["type"] == "thinking":
+                print("Thinking…", file=sys.stderr, flush=True)
+            elif event["type"] == "text":
+                print(event["text"], end="", flush=True)
+            elif event["type"] == "error":
+                print(f"\nCouldn't answer: {event['message']}.", file=sys.stderr)
+                failed = True
+            elif event["type"] == "done":
+                print()
+                by_number = {p["n"]: p for p in passages}
+                if event["cited"]:
+                    print("\nSources:")
+                    for n in event["cited"]:
+                        print(source_line(by_number[n]))
+                conversation = store.add_turn(conversation, question, event["answer"], passages, event["cited"])
+                print(f"\nConversation: {conversation[:8]}")
     return 1 if failed else 0
+
+
+def local_time(stamp):
+    from datetime import datetime
+    return datetime.fromisoformat(stamp).astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+def print_conversations(conversations, as_json, nothing):
+    if as_json:
+        print(json.dumps(conversations, indent=1))
+        return 0
+    if not conversations:
+        print(nothing, file=sys.stderr)
+    for c in conversations:
+        print(f"{c['id'][:8]}  {local_time(c['updated'])}  {c['title']}")
+    return 0
+
+
+def history_list(args, parser):
+    with closing(open_history()) as store:
+        conversations = store.conversations(args.limit)
+    return print_conversations(conversations, args.list_json, "No conversations are saved yet.")
+
+
+def history_search(args, parser):
+    with closing(open_history()) as store:
+        found = store.search(" ".join(args.words))
+    return print_conversations(found, args.json, "No saved conversation has all of those words.")
+
+
+def history_show(args, parser):
+    with closing(open_history()) as store:
+        conversation = find_conversation(store, args.conversation)
+        if not conversation:
+            return 1
+        saved = store.conversation(conversation)
+    turns = []
+    for asked, answered in zip(saved["messages"][::2], saved["messages"][1::2]):
+        by_number = {p["n"]: p for p in answered["passages"]}
+        turns.append({"question": asked["content"], "answer": answered["content"], "asked": asked["created"],
+                      "sources": [{key: by_number[n][key] for key in ("n", "id", "title", "heading", "source", "url")}
+                                  for n in answered["cited"] if n in by_number]})
+    if args.json:
+        print(json.dumps({key: saved[key] for key in ("id", "title", "created", "updated")} | {"turns": turns},
+                         indent=1))
+        return 0
+    print(f"Conversation {saved['id'][:8]}, started {local_time(saved['created'])}")
+    for turn in turns:
+        print(f"\nQuestion: {turn['question']}\n\n{turn['answer']}")
+        if turn["sources"]:
+            print("\nSources:")
+            for source in turn["sources"]:
+                print(source_line(source))
+    return 0
+
+
+def history_delete(args, parser):
+    with closing(open_history()) as store:
+        conversation = find_conversation(store, args.conversation)
+        if not conversation:
+            return 1
+        title = store.conversation(conversation)["title"]
+        store.delete(conversation)
+    print(f"Deleted conversation {conversation[:8]}: {title}")
+    return 0
+
+
+def history_add(args, parser):
+    """Save a question and an answer written elsewhere, as pi does, with the passages it cited looked up here so
+    their titles, sources and addresses are the library's own."""
+    question, answer_text = args.question.strip(), sys.stdin.read().strip()
+    if not question or not answer_text:
+        print("Give the question with --question and the answer on standard input; nothing was saved.",
+              file=sys.stderr)
+        return 1
+    ids, passages = list(dict.fromkeys(args.passages)), []
+    if ids:
+        library = open_library(by_meaning=False)
+        if not library:
+            return 1
+        try:
+            found = library.passages(ids)
+        finally:
+            library.close()
+        missing = sorted(set(ids) - {p.id for p in found})
+        if missing:
+            print(f"There is no passage {', '.join(map(str, missing))} in the library; nothing was saved. Give the "
+                  f"ids librarian search printed.", file=sys.stderr)
+            return 1
+        passages = [{"n": n, "id": p.id, "title": p.title, "heading": p.heading, "source": p.source, "url": p.url,
+                     "text": p.text} for n, p in enumerate(found, 1)]
+    with closing(open_history()) as store:
+        conversation = None
+        if args.conversation:
+            conversation = find_conversation(store, args.conversation)
+            if not conversation:
+                return 1
+        conversation = store.add_turn(conversation, question, answer_text, passages, [p["n"] for p in passages])
+    print(f"Conversation: {conversation}")
+    return 0
 
 
 def page_addresses(port):
@@ -321,11 +458,52 @@ def main(argv=None):
     ask_parser = commands.add_parser("ask", help="answer a question from the library with a local model",
                                      description="Search the library, then have a local Ollama model answer from the "
                                                  "passages it found, citing them. The model and thinking follow "
-                                                 "your pi settings unless given here.")
+                                                 "your pi settings unless given here. Each answer is saved, in a new "
+                                                 "conversation unless it follows up on one, and its id is printed.")
     ask_parser.add_argument("question", nargs="+")
     ask_parser.add_argument("--model", help="the Ollama chat model (default: pi's default model)")
     ask_parser.add_argument("--think", choices=["on", "off"], help="think before answering (default: as in pi)")
+    follow_up = ask_parser.add_mutually_exclusive_group()
+    follow_up.add_argument("--continue", dest="follow_up", action="store_const", const="last",
+                           help="follow up on the most recent conversation")
+    follow_up.add_argument("--conversation", dest="follow_up", metavar="ID", help="follow up on this conversation")
     ask_parser.set_defaults(run=ask)
+
+    history_parser = commands.add_parser(
+        "history", help="list, show, search, delete and save conversations",
+        description="List the most recent saved conversations, from librarian ask, pi and the browser page. ACTION "
+                    "is show, search, delete or add. An ID can be just the start of one, as listed here, and last "
+                    "means the most recent conversation.")
+    history_parser.add_argument("--json", dest="list_json", action="store_true", help="print them as JSON")
+    history_parser.add_argument("--limit", type=int, default=20, help="how many (default 20)")
+    history_parser.set_defaults(run=history_list)
+    actions = history_parser.add_subparsers(dest="action", metavar="ACTION")
+    show_parser = actions.add_parser("show", help="print a conversation",
+                                     description="Print a conversation's questions and answers, with the sources "
+                                                 "each answer cited.")
+    show_parser.add_argument("conversation", metavar="ID", help="a conversation's id, or last")
+    show_parser.add_argument("--json", action="store_true", help="print it as JSON")
+    show_parser.set_defaults(run=history_show)
+    find_parser = actions.add_parser("search", help="find conversations by their words",
+                                     description="List the conversations whose questions and answers hold every one "
+                                                 "of these words.")
+    find_parser.add_argument("words", nargs="+", metavar="WORD")
+    find_parser.add_argument("--json", action="store_true", help="print them as JSON")
+    find_parser.set_defaults(run=history_search)
+    delete_parser = actions.add_parser("delete", help="delete a conversation",
+                                       description="Delete a conversation and everything in it.")
+    delete_parser.add_argument("conversation", metavar="ID", help="a conversation's id, or last")
+    delete_parser.set_defaults(run=history_delete)
+    add_parser = actions.add_parser(
+        "add", help="save an answer written elsewhere, such as by pi",
+        description="Save a question and its answer, read from standard input, with the passages the answer cited; "
+                    "their titles, sources and addresses come from the library. Prints the conversation's id: give "
+                    "it with --conversation to add a follow-up to the same conversation.")
+    add_parser.add_argument("passages", nargs="*", type=int, metavar="PASSAGE",
+                            help="the id of a passage the answer cited, as librarian search printed it")
+    add_parser.add_argument("--question", required=True, help="the question that was answered")
+    add_parser.add_argument("--conversation", metavar="ID", help="add to this conversation instead of starting one")
+    add_parser.set_defaults(run=history_add)
 
     serve_parser = commands.add_parser(
         "serve", help="run the browser page",
