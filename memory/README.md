@@ -58,3 +58,6 @@ review records or convert them into ordinary memory pages.
 ## Active pages
 
 Add links as durable knowledge is established. Do not seed invented memories.
+
+- [Pool workers keep their own environment](pool-workers-keep-their-own-environment.md):
+  test patches to `os.environ` don't reach forkserver workers on Linux CI.
