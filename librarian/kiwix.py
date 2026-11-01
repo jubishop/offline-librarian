@@ -3,7 +3,8 @@
 The catalog (an OPDS feed) links each book to a Metalink file, which gives the book's size, its SHA-256 and the
 mirrors that carry it, best first. A download resumes from its .part file, moves on to the next mirror when one
 fails, and becomes the book's file only once its checksum matches. manifest.json records which file holds each
-book, for the steps that read them.
+book, for the steps that read them, and marks a book that has left the catalog: on 2026-11-01, when Kiwix withdrew
+WikEM, the user chose to hear about that once and keep the copy, not to be told every month.
 """
 import hashlib
 import http.client
@@ -146,11 +147,24 @@ def fetch(sources, folder, catalog_url=CATALOG_URL, workers=4, log=print):
         manifest = {}
     failures, lock = [], threading.Lock()
 
+    def save():
+        with open(manifest_path + ".tmp", "w") as f:
+            json.dump(manifest, f, indent=1, sort_keys=True)
+        os.replace(manifest_path + ".tmp", manifest_path)
+
     def one(source):
         name = label(*source)
         book = books.get(source)
         if not book:
-            failures.append(f"{name}: not in the Kiwix catalog")
+            if name not in manifest:
+                failures.append(f"{name}: not in the Kiwix catalog")
+            elif manifest[name].get("withdrawn"):  # already reported
+                log(f"{name}: still not in the Kiwix catalog, so the copy here stays")
+            else:
+                failures.append(f"{name}: not in the Kiwix catalog; keeping the copy here, and this alert won't repeat")
+                with lock:
+                    manifest[name]["withdrawn"] = True
+                    save()
             return
         try:
             file = read_metalink(book.metalink)
@@ -164,12 +178,10 @@ def fetch(sources, folder, catalog_url=CATALOG_URL, workers=4, log=print):
                         log(f"{name}: {have / 1e9:.2f} of {file.size / 1e9:.2f} GB")
                 download(file, folder, report)
                 log(f"{name}: done")
-            with lock:
+            with lock:  # a fresh entry, so a book back in the catalog is reported again if it leaves again
                 manifest[name] = {"file": file.name, "updated": book.updated, "sha256": file.sha256,
                                   "bytes": file.size}
-                with open(manifest_path + ".tmp", "w") as f:
-                    json.dump(manifest, f, indent=1, sort_keys=True)
-                os.replace(manifest_path + ".tmp", manifest_path)
+                save()
         except (FetchError, OSError, ET.ParseError, http.client.HTTPException, StopIteration, ValueError) as exc:
             failures.append(f"{name}: {exc or type(exc).__name__}")
 
