@@ -90,7 +90,10 @@ bin/librarian update           # or now
 those books, and deletes the superseded files. The embedding worker then
 embeds whatever text is new; text that hasn't changed keeps its vectors. It
 runs at Background priority, and launchd runs a missed month when the Mac
-next wakes. Problems are sent through Pushover.
+next wakes. Problems are sent through Pushover. `update install` gives the
+job the folder where your shell finds `pdftotext`, since launchd's own PATH
+leaves out Homebrew; run it again if `pdftotext` moves. A build that can't
+run `pdftotext` stops and keeps the books it has.
 
 ## Use it from pi
 

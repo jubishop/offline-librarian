@@ -45,6 +45,8 @@ def _convert(bounds):
                 continue
             if text and len(text) >= convert.MIN_CHARS:
                 out.append((convert.clean_title(title), entry.path, *passages.split_passages(text)))
+        except convert.MissingTool:  # unlike one bad page, it would fail every page
+            raise
         except Exception as exc:  # one bad page must not stop a million-page build
             problems.append(f"entry {i} ({type(exc).__name__}: {exc})")
     return out, problems
@@ -55,6 +57,8 @@ def _articles(path, source, workers, log):
     from libzim.reader import Archive
     count = Archive(path).entry_count
     step = 50 if source.kind == "pdf" else 1000
+    if source.kind in ("pdf", "web"):  # here, before any work: a forkserver's workers keep their own PATH
+        convert.pdftotext()
     ranges = [(start, min(start + step, count)) for start in range(0, count, step)]
     with multiprocessing.Pool(workers, initializer=_start_worker, initargs=(path, source.kind, source.skip)) as pool:
         for batch, problems in pool.imap(_convert, ranges):

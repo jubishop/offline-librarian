@@ -22,8 +22,11 @@ def _domain():
     return f"gui/{os.getuid()}"
 
 
-def _install(label, arguments, home, log_name, calendar=None):
-    environment = {"OFFLINE_LIBRARIAN_HOME": home, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+
+
+def _install(label, arguments, home, log_name, calendar=None, path=SYSTEM_PATH):
+    environment = {"OFFLINE_LIBRARIAN_HOME": home, "PATH": os.pathsep.join(dict.fromkeys(path)),
                    "HOME": os.path.expanduser("~")}
     if os.environ.get("OLLAMA_HOST"):
         environment["OLLAMA_HOST"] = os.environ["OLLAMA_HOST"]
@@ -60,8 +63,11 @@ def install(home, model):
 
 
 def install_update(home):
-    """Schedule the monthly update: the 1st of each month at 3:00, at Background priority."""
-    return _install(UPDATE, ["update", "run"], home, "update", calendar={"Day": 1, "Hour": 3, "Minute": 0})
+    """Schedule the monthly update: the 1st of each month at 3:00, at Background priority. Its build runs
+    pdftotext from where this shell finds it, since launchd's PATH leaves out Homebrew."""
+    from librarian import convert
+    return _install(UPDATE, ["update", "run"], home, "update", calendar={"Day": 1, "Hour": 3, "Minute": 0},
+                    path=[os.path.dirname(convert.pdftotext()), *SYSTEM_PATH])
 
 
 def _stop(label, timeout=15):
