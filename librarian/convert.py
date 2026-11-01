@@ -190,11 +190,20 @@ def html_to_text(html, kind):
     return f"{author}\n\n{text}" if author and text else text
 
 
+class MissingTool(RuntimeError):
+    """A program the build runs can't be found. Every page that needs it would fail, so the build stops rather than
+    skip them all and replace a book with an empty one."""
+
+
 def pdf_to_text(data):
     with tempfile.NamedTemporaryFile(suffix=".pdf") as f:
         f.write(data)
         f.flush()
-        result = subprocess.run(["pdftotext", "-q", "-enc", "UTF-8", f.name, "-"], capture_output=True, timeout=600)
+        try:
+            result = subprocess.run(["pdftotext", "-q", "-enc", "UTF-8", f.name, "-"], capture_output=True,
+                                    timeout=600)
+        except FileNotFoundError:
+            raise MissingTool("pdftotext isn't installed or isn't on the PATH: install poppler") from None
     text = result.stdout.decode("utf-8", "replace").replace("\f", "\n\n")
     paras = [" ".join(p.split()) for p in re.split(r"\n\s*\n", text)]
     return "\n\n".join(p for p in paras if p)

@@ -6,6 +6,7 @@ checkout: an agent runs the code it was installed from.
 """
 import os
 import plistlib
+import shutil
 import subprocess
 import time
 
@@ -22,9 +23,24 @@ def _domain():
     return f"gui/{os.getuid()}"
 
 
-def _install(label, arguments, home, log_name, calendar=None):
-    environment = {"OFFLINE_LIBRARIAN_HOME": home, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-                   "HOME": os.path.expanduser("~")}
+SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+BUILD_TOOLS = ["pdftotext"]  # what the update's build runs
+
+
+def _path(tools):
+    """The system folders, led by the folders where this shell finds tools: launchd's PATH leaves out Homebrew,
+    where pdftotext usually is."""
+    folders = []
+    for tool in tools:
+        found = shutil.which(tool)
+        if not found:
+            raise RuntimeError(f"{tool} isn't installed or isn't on the PATH: install poppler")
+        folders.append(os.path.dirname(found))
+    return os.pathsep.join(dict.fromkeys(folders + SYSTEM_PATH))
+
+
+def _install(label, arguments, home, log_name, calendar=None, tools=()):
+    environment = {"OFFLINE_LIBRARIAN_HOME": home, "PATH": _path(tools), "HOME": os.path.expanduser("~")}
     if os.environ.get("OLLAMA_HOST"):
         environment["OLLAMA_HOST"] = os.environ["OLLAMA_HOST"]
     agent = {
@@ -61,7 +77,8 @@ def install(home, model):
 
 def install_update(home):
     """Schedule the monthly update: the 1st of each month at 3:00, at Background priority."""
-    return _install(UPDATE, ["update", "run"], home, "update", calendar={"Day": 1, "Hour": 3, "Minute": 0})
+    return _install(UPDATE, ["update", "run"], home, "update", calendar={"Day": 1, "Hour": 3, "Minute": 0},
+                    tools=BUILD_TOOLS)
 
 
 def _stop(label, timeout=15):

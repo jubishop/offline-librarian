@@ -4,8 +4,9 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
-from books import Page, wiki_page, write_book
+from books import Page, pdf, wiki_page, write_book
 from librarian import build, kiwix, update
 from librarian.library import Library
 from test_build_and_search import REWARMING, SHIVERING, STARTER
@@ -20,6 +21,11 @@ def zim_bytes(pages):
             return f.read()
 
 
+BLEACH = ("Emergency Disinfection of Drinking Water",
+          "Add 8 drops of unscented household chlorine bleach to each gallon of clear water.",
+          "Stir the mixture well and let it stand for 30 minutes before drinking it.",
+          "If the water does not have a slight chlorine odor, repeat the dose and wait 15 more minutes.",
+          "Store the disinfected water in clean, covered containers away from sunlight.")
 OLD = zim_bytes([Page("Hypothermia", "Hypothermia", wiki_page("Hypothermia", [SHIVERING]))])
 NEW = zim_bytes([Page("Hypothermia", "Hypothermia", wiki_page("Hypothermia", [SHIVERING, REWARMING])),
                  Page("Sourdough", "Sourdough", wiki_page("Sourdough", [STARTER]))])
@@ -73,6 +79,31 @@ class UpdateTest(unittest.TestCase):
         self.assertIn("wikem_en_all nopic: not in the Kiwix catalog", message)
         self.assertEqual(self.library().search("hypothermia shivering")[0].title, "Hypothermia")
         self.assertIn(self.old_file, os.listdir(os.path.join(self.home, "zim")))
+
+    def test_stops_when_pdftotext_is_missing_and_keeps_the_old_edition(self):
+        # On 2026-11-01 the launch agent's PATH lacked Homebrew, so every PDF was skipped and a 1-article build
+        # replaced the old edition, whose file was then deleted.
+        def water(*lines):
+            return zim_bytes([Page("home", "home", "<html><body>Library</body></html>"),
+                              Page("files/Water (1).pdf", "files/Water (1).pdf", pdf(lines),
+                                   mimetype="application/pdf")])
+        wikem = self.site.book("wikem_en_all", "nopic", OLD, edition="2026-09")[1]
+        old_water, entry = self.site.book("zimgit-water_en", "", water(*BLEACH), edition="2024-08")
+        kiwix.fetch([("zimgit-water_en", "")], os.path.join(self.home, "zim"), catalog_url=self.site.catalog(entry),
+                    log=lambda line: None)
+        build.build(self.home, workers=1, log=lambda line: None)
+        self.assertIn("8 drops", self.library().search("how many drops of bleach per gallon")[0].text)
+        _, entry = self.site.book("zimgit-water_en", "", water(*BLEACH, "Boil cloudy water for one full minute."),
+                                  edition="2026-10")
+        tools = tempfile.TemporaryDirectory()
+        self.addCleanup(tools.cleanup)
+        with mock.patch.dict(os.environ, {"PATH": tools.name}):  # a PATH without pdftotext
+            failures = self.run_update(self.site.catalog(wikem, entry))
+        self.assertEqual(len(failures), 1, failures)
+        self.assertIn("pdftotext isn't installed", failures[0])
+        self.assertIn("pdftotext isn't installed", self.sent[0][1])
+        self.assertIn("8 drops", self.library().search("how many drops of bleach per gallon")[0].text)
+        self.assertIn(old_water, os.listdir(os.path.join(self.home, "zim")))
 
 
 if __name__ == "__main__":

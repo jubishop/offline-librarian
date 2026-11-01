@@ -220,6 +220,29 @@ esac
         self.assertEqual(self.run_librarian("update", "uninstall").returncode, 0)
         self.assertFalse(os.path.exists(path))
 
+    def test_update_install_gives_the_job_the_folder_that_holds_pdftotext(self):
+        # launchd's PATH leaves out Homebrew, where pdftotext usually is.
+        import plistlib
+        tools = os.path.join(self.user, "tools")
+        os.makedirs(tools)
+        with open(os.path.join(tools, "pdftotext"), "w") as f:
+            f.write("#!/bin/sh\n")
+        os.chmod(os.path.join(tools, "pdftotext"), 0o755)
+        self.path = os.pathsep.join([self.path.split(os.pathsep)[0], tools, *self.path.split(os.pathsep)[1:]])
+        result = self.run_librarian("update", "install")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(os.path.join(self.user, "Library", "LaunchAgents", "org.jubishop.offline-librarian.update.plist"),
+                  "rb") as f:
+            path = plistlib.load(f)["EnvironmentVariables"]["PATH"]
+        self.assertEqual(path.split(os.pathsep), [tools, "/usr/bin", "/bin", "/usr/sbin", "/sbin"])
+
+    def test_update_install_refuses_without_pdftotext(self):
+        self.path = self.path.split(os.pathsep)[0]  # only the stand-in launchctl
+        result = self.run_librarian("update", "install")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("pdftotext isn't installed", result.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.user, "Library", "LaunchAgents")))
+
     def test_pause_and_resume_show_in_status(self):
         self.assertIn("state: not started", self.run_librarian("embed", "status").stdout)
         self.run_librarian("embed", "pause")

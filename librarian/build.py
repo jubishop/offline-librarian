@@ -45,6 +45,8 @@ def _convert(bounds):
                 continue
             if text and len(text) >= convert.MIN_CHARS:
                 out.append((convert.clean_title(title), entry.path, *passages.split_passages(text)))
+        except convert.MissingTool:  # unlike one bad page, it would fail every page
+            raise
         except Exception as exc:  # one bad page must not stop a million-page build
             problems.append(f"entry {i} ({type(exc).__name__}: {exc})")
     return out, problems
