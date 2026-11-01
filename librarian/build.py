@@ -57,6 +57,8 @@ def _articles(path, source, workers, log):
     from libzim.reader import Archive
     count = Archive(path).entry_count
     step = 50 if source.kind == "pdf" else 1000
+    if source.kind in ("pdf", "web"):  # here, before any work: a forkserver's workers keep their own PATH
+        convert.pdftotext()
     ranges = [(start, min(start + step, count)) for start in range(0, count, step)]
     with multiprocessing.Pool(workers, initializer=_start_worker, initargs=(path, source.kind, source.skip)) as pool:
         for batch, problems in pool.imap(_convert, ranges):
