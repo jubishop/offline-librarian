@@ -87,7 +87,10 @@ assistant built on the same idea; later changes give their dates.
   embedding finishes, and one whenever a monthly update fails and needs them;
   routine successful updates send nothing. Messages can't be sent while the
   internet is down. The browser page's server also reported its crashes until
-  it was removed on 2026-10-28.
+  it was removed on 2026-10-28. On 2026-11-01, after Kiwix withdrew WikEM, the
+  user chose to hear once when a book they have leaves the catalog: later
+  updates keep the copy quietly, and update it again if it returns. The
+  alternatives were an alert every month, none at all, or removing the book.
 - **A retrieval test set checks quality.** On 2026-10-25 the user chose a set
   of about 30 to 40 emergency, medical and how-to questions, each with the
   articles a good answer must find. It runs offline in minutes and scores

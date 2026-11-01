@@ -105,6 +105,19 @@ class UpdateTest(unittest.TestCase):
         self.assertIn("8 drops", self.library().search("how many drops of bleach per gallon")[0].text)
         self.assertIn(old_water, os.listdir(os.path.join(self.home, "zim")))
 
+    def test_reports_a_book_gone_from_the_catalog_once_and_keeps_it(self):
+        # On 2026-11-01 the user chose one alert when Kiwix withdraws a book, as it did WikEM, not one a month.
+        self.assertEqual(len(self.run_update(self.site.catalog())), 1)
+        self.assertEqual(self.run_update(self.site.catalog()), [])  # the next month: quiet
+        self.assertEqual(len(self.sent), 1)
+        self.assertEqual(self.library().search("hypothermia shivering")[0].title, "Hypothermia")
+        self.assertIn(self.old_file, os.listdir(os.path.join(self.home, "zim")))
+        new_file, entry = self.site.book("wikem_en_all", "nopic", NEW, edition="2026-10")  # back again
+        self.assertEqual(self.run_update(self.site.catalog(entry)), [])
+        self.assertEqual(self.library().search("sourdough starter")[0].title, "Sourdough")
+        self.assertEqual(len(self.run_update(self.site.catalog())), 1)  # and gone again: reported again
+        self.assertEqual(len(self.sent), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
