@@ -1,11 +1,12 @@
 """The library: one SQLite file holding every article, its passages and a full-text index over them.
 
 Articles are stored compressed, and passages are offsets into their article's text. The full-text index (FTS5,
-BM25) holds no text of its own. Keyword search follows Survival LLM's library/search.py (MIT License, Copyright
-(c) 2026 Ronny Fernandez; see LICENSE.survival-llm): every word first, any word when that finds too little, and
-sources weighted by how authoritative they are. When the passages also have vectors (librarian/meaning.py), meaning
-search weighs sources too, more gently, and the keyword and meaning rankings are merged by weighted reciprocal rank
-fusion. Results keep one passage per article, and text that several books share appears once.
+BM25) holds no text of its own, and meta records the last build that changed the library. Keyword search follows
+Survival LLM's library/search.py (MIT License, Copyright (c) 2026 Ronny Fernandez; see LICENSE.survival-llm): every
+word first, any word when that finds too little, and sources weighted by how authoritative they are. When the
+passages also have vectors (librarian/meaning.py), meaning search weighs sources too, more gently, and the keyword
+and meaning rankings are merged by weighted reciprocal rank fusion. Results keep one passage per article, and text
+that several books share appears once.
 """
 import re
 import sqlite3
@@ -13,6 +14,7 @@ import zlib
 from dataclasses import dataclass
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value);
 CREATE TABLE IF NOT EXISTS sources(id INTEGER PRIMARY KEY, key TEXT UNIQUE, label TEXT, topic TEXT, license TEXT,
                                    weight REAL, origin TEXT, articles INT DEFAULT 0, done INT DEFAULT 0);
 CREATE TABLE IF NOT EXISTS articles(id INTEGER PRIMARY KEY, source_id INT, title TEXT, url TEXT, text BLOB);

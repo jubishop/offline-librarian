@@ -6,6 +6,10 @@ per vector, appended as they are made, and vectors.sqlite maps each hash to its 
 switch, the status and which notifications were sent. A row counts only once it is recorded there, so an
 interrupted run resumes cleanly.
 
+Once a build has changed the library, an embedding run that has embedded everything drops the vectors no passage
+uses any more, from replaced editions and rebuilt sources, and moves the last rows into the gaps, so the store stays
+the size of the library. Searches read rows only while none are moving.
+
 Embedding yields while Ollama has any other model loaded, so chat models keep the GPU, as the user's Stories index
 does. The background worker (librarian embed worker) also waits out an unreachable Ollama; a run from the terminal
 stops with an error instead.
@@ -18,6 +22,7 @@ import time
 import urllib.error
 import urllib.request
 import zlib
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 import numpy as np
@@ -28,6 +33,7 @@ DEFAULT_MODEL = "embeddinggemma-2:270m-bf16-text"
 QUERY_PROMPT = "task: search result | query: "   # EmbeddingGemma's retrieval prompt for questions
 CHUNK = 10_000           # passages read from the library at a time, so no read transaction stays open for long
 OUTAGE_NOTICE = 10 * 60  # seconds Ollama may be unreachable before the worker says so
+COMPACT_BATCH = 50_000   # rows moved at a time while closing gaps; a search waits for one batch at most
 
 STORE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -95,6 +101,7 @@ class VectorStore:
 
     def __init__(self, home, write=False):
         self.vectors_path = os.path.join(home, "vectors.f16")
+        self.lock_path = os.path.join(home, ".vectors.lock")
         db_path = os.path.join(home, "vectors.sqlite")
         if write:
             self.db = sqlite3.connect(db_path, isolation_level=None, timeout=30)
@@ -143,6 +150,53 @@ class VectorStore:
                             [(h, rows + n) for n, h in enumerate(hashes)])
         self.db.execute("COMMIT")
 
+    @contextmanager
+    def _locked(self, operation):
+        with open(self.lock_path, "a") as lock:
+            fcntl.flock(lock, operation)  # released when the file closes
+            yield
+
+    def reading(self):
+        """Hold while reading rows; searches share it, and no rows move until they are done."""
+        return self._locked(fcntl.LOCK_SH)
+
+    def moving(self):
+        """Hold while moving rows or cutting the file, once no search is reading them."""
+        return self._locked(fcntl.LOCK_EX)
+
+    def drop(self, rows):
+        """Forget the vectors in these rows, leaving gaps for compact to close."""
+        with self.moving():
+            self.db.execute("BEGIN")
+            self.db.executemany("DELETE FROM vectors WHERE row = ?", ((row,) for row in rows))
+            self.db.execute("COMMIT")
+
+    def compact(self):
+        """Close the gaps dropped vectors left by moving the last rows into them, then cut the file to the rows in
+        use. Rows move a batch at a time, so searches wait only briefly. Each batch is written before it is recorded,
+        so an interrupted compaction leaves every vector where its hash says, and the next one finishes the job."""
+        count, rows = self.db.execute("SELECT COUNT(*), COALESCE(MAX(row) + 1, 0) FROM vectors").fetchone()
+        dim = self.get("dim")
+        if count < rows:  # then each row from count on has a gap below count to go to
+            gaps = np.concatenate([np.arange(first, end) for first, end in self.db.execute(
+                "SELECT prev + 1, MIN(row, ?) FROM (SELECT row, LAG(row, 1, -1) OVER (ORDER BY row) AS prev "
+                "FROM vectors) WHERE row > prev + 1 AND prev + 1 < ?", (count, count))])
+            last = [row for (row,) in self.db.execute("SELECT row FROM vectors WHERE row >= ? ORDER BY row", (count,))]
+            for at in range(0, len(last), COMPACT_BATCH):
+                old, new = last[at:at + COMPACT_BATCH], gaps[at:at + COMPACT_BATCH].tolist()
+                with self.moving():
+                    vectors = np.memmap(self.vectors_path, dtype=np.float16, mode="r+", shape=(rows, dim))
+                    vectors[new] = vectors[old]
+                    vectors.flush()
+                    del vectors
+                    self.db.execute("BEGIN")
+                    self.db.executemany("UPDATE vectors SET row = ? WHERE row = ?", zip(new, old))
+                    self.db.execute("COMMIT")
+        if dim and os.path.exists(self.vectors_path) and os.path.getsize(self.vectors_path) > count * dim * 2:
+            with self.moving(), open(self.vectors_path, "r+b") as f:
+                f.truncate(count * dim * 2)
+                os.fsync(f.fileno())
+
     def notify_once(self, notify, name, title, message):
         if notify and not self.db.execute("SELECT 1 FROM events WHERE name=?", (name,)).fetchone():
             notify(title, message)
@@ -177,15 +231,39 @@ def status(home):
         store.close()
 
 
-def _pending(home, store):
-    """How many distinct passage inputs have no vector yet."""
+@contextmanager
+def _library_and_vectors(home):
+    """A read-only connection to the library, with the vector store attached as v."""
     db = sqlite3.connect(f"file:{os.path.join(home, 'library.sqlite')}?mode=ro", uri=True)
     try:
         db.execute("ATTACH DATABASE ? AS v", (f"file:{os.path.join(home, 'vectors.sqlite')}?mode=ro",))
-        return db.execute("SELECT COUNT(DISTINCT p.hash) FROM passages p "
-                          "WHERE NOT EXISTS (SELECT 1 FROM v.vectors WHERE v.vectors.hash = p.hash)").fetchone()[0]
+        yield db
     finally:
         db.close()
+
+
+def _pending(home, store):
+    """How many distinct passage inputs have no vector yet."""
+    with _library_and_vectors(home) as db:
+        return db.execute("SELECT COUNT(DISTINCT p.hash) FROM passages p "
+                          "WHERE NOT EXISTS (SELECT 1 FROM v.vectors WHERE v.vectors.hash = p.hash)").fetchone()[0]
+
+
+def _unused(db):
+    """The rows of the vectors that no passage in the library uses, given a connection from _library_and_vectors."""
+    return [row for (row,) in db.execute(
+        "SELECT row FROM v.vectors WHERE NOT EXISTS (SELECT 1 FROM passages p WHERE p.hash = v.vectors.hash)")]
+
+
+def _last_build(library):
+    """The id of the last build that changed the library and finished: "" until a new library's first build has
+    finished, and None for a library built before builds were recorded. Each build has its own id, so a library
+    rebuilt from scratch can't repeat one that was checked."""
+    try:  # main.meta, since the vector store attached as v has a meta table too
+        row = library.execute("SELECT value FROM main.meta WHERE key = 'build'").fetchone()
+    except sqlite3.OperationalError:  # no meta table: built before builds were recorded
+        return None
+    return row[0] if row else ""
 
 
 def _source_ranges(library):
@@ -302,9 +380,27 @@ class _Run:
                         return self.done
             self.pending = 0
             self.report("current")
+            self.drop_unused()
             return self.done
         finally:
             library.close()
+
+    def drop_unused(self):
+        """Once a build has changed the library, drop the vectors no passage uses any more and close their gaps. Only
+        a finished build counts, so a library being rebuilt from scratch keeps every vector until its build is done.
+        The build and the passages come from the library file as it is now, not the one this pass opened, which may
+        have been deleted for such a rebuild since. The build is read before looking, so one that finishes meanwhile
+        is looked at again on the next pass."""
+        with _library_and_vectors(self.home) as db:
+            build = _last_build(db)
+            if build == "" or self.store.get("checked_build", "never") == build:
+                return
+            unused = _unused(db)
+        if unused:
+            self.store.drop(unused)
+            self.log(f"dropped {len(unused):,} vectors no passage uses")
+        self.store.compact()
+        self.store.set("checked_build", build)
 
     def _embed_chunk(self, library, todo):
         texts, article_id, article_text = [], None, ""
@@ -389,15 +485,19 @@ class Meaning:
         self.store, self.vectors, self.model = None, None, None
         if os.path.exists(os.path.join(home, "vectors.sqlite")):
             self.store = VectorStore(home)
-            self.refresh()
+            with self.store.reading():
+                self.refresh()
 
     def refresh(self):
-        """See vectors added since this was opened."""
+        """See the rows as they are now: those added since this was opened, and none past where a compaction cut
+        the file. Call it while reading."""
         if self.store is None:
             return
         rows, dim = self.store.rows(), self.store.get("dim")
         self.model = self.store.get("model")
-        if rows and dim and (self.vectors is None or len(self.vectors) != rows):
+        if not (rows and dim):
+            self.vectors = None
+        elif self.vectors is None or len(self.vectors) != rows:
             self.vectors = np.memmap(self.store.vectors_path, dtype=np.float16, mode="r", shape=(rows, dim))
 
     def available(self):
@@ -414,12 +514,16 @@ class Meaning:
         if self.embedder.model != self.model:
             raise MeaningUnavailable(f"the vectors were made with {self.model}, not {self.embedder.model}")
         query = self.embedder.embed_query(question).astype(np.float32)
-        scores = np.empty(len(self.vectors), dtype=np.float32)
-        for start in range(0, len(scores), 250_000):  # float16 rows, compared in float32 a slice at a time
-            scores[start:start + 250_000] = self.vectors[start:start + 250_000].astype(np.float32) @ query
-        best = np.argpartition(-scores, min(limit, len(scores) - 1))[:limit]
-        best = best[np.argsort(-scores[best])]
-        rows = [int(i) for i in best]
-        hashes = dict(self.store.db.execute(
-            f"SELECT row, hash FROM vectors WHERE row IN ({','.join('?' * len(rows))})", rows))
+        with self.store.reading():  # no rows move while they are compared and looked up
+            self.refresh()
+            if self.vectors is None:
+                return []
+            scores = np.empty(len(self.vectors), dtype=np.float32)
+            for start in range(0, len(scores), 250_000):  # float16 rows, compared in float32 a slice at a time
+                scores[start:start + 250_000] = self.vectors[start:start + 250_000].astype(np.float32) @ query
+            best = np.argpartition(-scores, min(limit, len(scores) - 1))[:limit]
+            best = best[np.argsort(-scores[best])]
+            rows = [int(i) for i in best]
+            hashes = dict(self.store.db.execute(
+                f"SELECT row, hash FROM vectors WHERE row IN ({','.join('?' * len(rows))})", rows))
         return [(hashes[row], float(scores[row])) for row in rows if row in hashes]

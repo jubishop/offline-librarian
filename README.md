@@ -88,9 +88,11 @@ bin/librarian update           # or now
 
 `update` fetches newer Kiwix editions of the books you have, rebuilds only
 those books, and deletes the superseded files. The embedding worker then
-embeds whatever text is new; text that hasn't changed keeps its vectors. It
-runs at Background priority, and launchd runs a missed month when the Mac
-next wakes. Problems are sent through Pushover; a book that leaves the Kiwix
+embeds whatever text is new; text that hasn't changed keeps its vectors.
+Once it has embedded everything after a build, the worker drops the vectors
+of text no passage has any more, so the meaning index stays the size of the
+library. `update` runs at Background priority, and launchd runs a missed
+month when the Mac next wakes. Problems are sent through Pushover; a book that leaves the Kiwix
 catalog is reported once and kept. `update install` gives the
 job the folder where your shell finds `pdftotext`, since launchd's own PATH
 leaves out Homebrew; run it again if `pdftotext` moves. A build that can't

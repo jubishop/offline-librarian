@@ -205,6 +205,7 @@ them.
 | Retrieval test set, keyword + meaning, weighted by source | hit@1 0.61, hit@3 0.83, hit@8 0.89, MRR 0.72 | `bin/eval-retrieval`, with all 14,530,721 passage texts embedded; authority 0.3, k = 10, keywords weighted 0.5. The settings before it scored MRR 0.48 on the same index, 2026-11-02 |
 | How-to spot-check | MRR 1.00 before, 0.96 after; expected articles in the top 8 fell from 0.84 to 0.77 | 14 how-to questions outside the test set whose answers are on wikiHow, Stack Exchange, iFixit or Wikipedia, scored with a one-off script; at the full source weight, MRR 0.71 and 0.61 in the top 8, 2026-11-02 |
 | Repeated text | 48,312 distinct inputs in 54,655 passages (12% repeats) | WikEM, NHS medicines and Ready.gov, 2026-10-25 |
+| Vectors no passage uses | 131,230 of 14,530,721 stored vectors, for 14,399,491 distinct passage texts; finding them took 3.7 s | the real store after the wikiHow rebuild, before they were dropped ([#27](https://github.com/jubishop/offline-librarian/issues/27)), 2026-11-02 |
 
 The built library has 13.8 million passages, more than the 10 million
 estimated from Survival LLM's downloads. At about 55 a second, embedding them
@@ -231,6 +232,21 @@ These were made while building, not by the user, and can change.
   search compares the question with every row: about 0.6 seconds for 10
   million rows on the M5 Pro (2 million measured, 2026-10-25), so no
   approximate index or extra dependency is needed.
+- **Vectors no passage uses are dropped.** A new edition or a rebuilt source
+  gives edited passages new text, so their old vectors lose every passage.
+  Each build that changes the library and finishes records a new id in
+  `library.sqlite`. When an embedding run has embedded everything and finds
+  an id it hasn't checked, it deletes the vectors whose hash no passage
+  has, moves the last rows of `vectors.f16` into the gaps, 50,000 at a time,
+  and cuts the file, so the store stays the size of the library. Each batch
+  is written before it is recorded, so an interrupted compaction loses
+  nothing. Searches share `.vectors.lock` while they read rows and each batch
+  takes it alone, so a search waits for one batch at most and never reads a
+  row mid-move or past the end of the cut file. Only a finished build counts,
+  so a library rebuilt from scratch keeps every vector until its build is
+  done. Vectors whose text might come back, such as from an older edition,
+  aren't kept: the library keeps books Kiwix withdraws, so their passages
+  and vectors stay anyway.
 - **Meaning search weighs source authority, gently.** Keyword search
   multiplies each BM25 score by its source's weight: 1.3 for official and
   clinical sources, 1.15 for Wikipedia, and 1.0 for the rest. Meaning search
