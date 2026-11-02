@@ -118,26 +118,67 @@ def _life_table(html):
     return "\n\n".join(lines) if rows else ""
 
 
-def _wikihow(path):
-    """(title, url, text) for each guide in the 2018 wikiHow dump, its steps numbered."""
+def _wikihow_rows(path):
     csv.field_size_limit(sys.maxsize)
     with open(path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            # The dump glues a counter onto titles ("How to Be an Organized Artist1").
-            title = re.sub(r"(?<=[A-Za-z)])\d+$", "", (row.get("title") or "").strip()).strip()
-            heads = [h.strip().rstrip(",").strip() for h in (row.get("headline") or "").split("\n")]
-            heads = [h for h in heads if h]
-            paras = [" ".join(p.split()) for p in re.split(r";?\n,", row.get("text") or "")]
-            paras = [p.strip(" ;,") for p in paras if p.strip(" ;,")]
-            if not title or not paras:
-                continue
-            if len(heads) == len(paras):
-                steps = [f"{n}. {h}\n\n{p}" for n, (h, p) in enumerate(zip(heads, paras), 1)]
-            else:
-                steps = ["## Steps\n\n" + "\n".join(f"{n}. {h}" for n, h in enumerate(heads, 1))] if heads else []
-                steps += ["## Details"] + paras
-            url = "https://www.wikihow.com/" + title.replace("How to ", "", 1).replace(" ", "-")
-            yield title, url, "\n\n".join(steps)
+            yield (row.get("title") or "").strip(), row
+
+
+def _wikihow_parts(path):
+    """{dump title: (guide title, part number, the guide's parts)}. The dump has a row for each part of a guide, not
+    always next to the others, with the part's number glued onto the guide's title ("How to Treat a Hand Burn1"),
+    even one ending in a number ("How to Survive Turning 181"). A guide in one row has no number ("How to Take
+    Vitamin B12"), so a number counts as a part only when the same title also has parts 1 to it, and at least 2."""
+    titles = {title for title, _ in _wikihow_rows(path)}
+    found, sizes = {}, {}
+    for title in titles:
+        found[title] = (title, 0)
+        digits = re.search(r"\d+$", title)
+        for cut in range(digits.start() if digits else len(title), len(title)):  # the longest number first
+            guide, part = title[:cut], int(title[cut:])
+            if (title[cut] != "0" and guide[-1:].strip() and guide not in titles
+                    and all(f"{guide}{n}" in titles for n in range(1, max(part, 2) + 1))):
+                found[title] = (guide, part)
+                sizes[guide] = sizes.get(guide, 0) + 1
+                break
+    return {title: (guide, part, sizes.get(guide, 1)) for title, (guide, part) in found.items()}
+
+
+def _wikihow_steps(row):
+    """One row of the wikiHow dump as text, its steps numbered."""
+    heads = [h.strip().rstrip(",").strip() for h in (row.get("headline") or "").split("\n")]
+    heads = [h for h in heads if h]
+    paras = [" ".join(p.split()) for p in re.split(r";?\n,", row.get("text") or "")]
+    paras = [p.strip(" ;,") for p in paras if p.strip(" ;,")]
+    if not paras:
+        return ""
+    if len(heads) == len(paras):
+        steps = [f"{n}. {h}\n\n{p}" for n, (h, p) in enumerate(zip(heads, paras), 1)]
+    else:
+        steps = ["## Steps\n\n" + "\n".join(f"{n}. {h}" for n, h in enumerate(heads, 1))] if heads else []
+        steps += ["## Details"] + paras
+    return "\n\n".join(steps)
+
+
+def _wikihow(path):
+    """(title, url, text) for each guide in the 2018 wikiHow dump, its steps numbered, and its parts, when it has
+    several, as sections in order. A guide is given once its last row has been read."""
+    parts, waiting = _wikihow_parts(path), {}
+    for dump_title, row in _wikihow_rows(path):
+        title, part, size = parts[dump_title]
+        got = waiting.setdefault(title, {})
+        got[part] = _wikihow_steps(row)
+        if len(got) < size:
+            continue
+        del waiting[title]
+        sections = [got[part] for part in sorted(got) if got[part]]
+        if not title or not sections:
+            continue
+        if len(sections) > 1:
+            sections = [f"## Section {n} of {len(sections)}\n\n{text}" for n, text in enumerate(sections, 1)]
+        url = "https://www.wikihow.com/" + title.replace("How to ", "", 1).replace(" ", "-")
+        yield title, url, "\n\n".join(sections)
 
 
 def articles(home, source):

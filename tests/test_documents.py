@@ -27,7 +27,7 @@ GUIDEBOOK = pdf(["Emergency Response Guidebook 2024",
                  "Do not walk into or touch spilled material, and avoid inhaling fumes or smoke."])
 WIKIHOW = ('headline,title,text\n'
            '"\nFill a pot with water.,\nBring it to a rolling boil.,\nKeep it boiling for one minute.",'
-           'How to Boil Water to Make It Safe1,'
+           'How to Boil Water to Make It Safe,'
            '" Use a clean pot and the clearest water you can find, letting cloudy water settle first;\n,'
            ' Wait until large bubbles rise steadily from the bottom of the pot and do not stop when you stir;\n,'
            ' At elevations above 6,500 feet, keep the water boiling for three minutes instead of one."\n').encode()
@@ -112,6 +112,43 @@ class DocumentsTest(unittest.TestCase):
         self.assertEqual(hit.url, "https://www.wikihow.com/Boil-Water-to-Make-It-Safe")
         self.assertIn("1. Fill a pot with water.", hit.text)
         self.assertIn("3. Keep it boiling for one minute.", hit.text)
+
+    def test_builds_a_wikihow_guide_split_across_rows_as_one_article(self):
+        # The dump writes each part of a guide as its own row, not always next to the others, with the part's number
+        # glued onto the title, even a title that ends in a number. A guide in one row has no number.
+        rows = [("Run cold water over the burn.", "How to Treat a Hand Burn1",
+                 "Hold the burned hand under cool running water for at least ten minutes to stop the burning."),
+                ("Keep the kettle out of reach.", "How to Childproof a Kitchen",
+                 "Push hot drinks and kettles to the back of the counter, where small children cannot reach them."),
+                ("Cover the burn loosely.", "How to Treat a Hand Burn2",
+                 "Lay sterile gauze or cling film over the burn without wrapping it tightly around the hand."),
+                ("Prepare a crash cart.", "How to Survive Turning 181",
+                 "Gather snacks, water and a blanket the night before your eighteenth birthday party begins."),
+                ("See a doctor for a deep burn.", "How to Treat a Hand Burn3",
+                 "Get medical care at once if the burn is larger than your palm, white, charred or leathery."),
+                ("Pace yourself.", "How to Survive Turning 182",
+                 "Drink a glass of water between celebrations and leave the party before you feel exhausted."),
+                ("Take your vitamin with food.", "How to Take Vitamin B12",
+                 "Swallow the tablet with breakfast, since a full stomach helps the body absorb the vitamin better.")]
+        os.makedirs(os.path.join(self.home, "raw", "wikihow"))
+        with open(os.path.join(self.home, "raw", "wikihow", "wikihowAll.csv"), "w", encoding="utf-8") as f:
+            f.write("headline,title,text\n" + "".join(f'"\n{head}",{title}," {" ".join([text] * 3)}"\n'
+                                                      for head, title, text in rows))
+        library = self.build()
+        self.assertEqual(sorted(title for (title,) in library.db.execute("SELECT title FROM articles")), [
+            "How to Childproof a Kitchen", "How to Survive Turning 18", "How to Take Vitamin B12",
+            "How to Treat a Hand Burn"])
+        burn = library.article(library.search("burned hand cold water")[0].id)
+        self.assertEqual((burn.title, burn.url), ("How to Treat a Hand Burn",
+                                                  "https://www.wikihow.com/Treat-a-Hand-Burn"))
+        self.assertLess(burn.text.index("## Section 1 of 3\n\n1. Run cold water over the burn."),
+                        burn.text.index("## Section 2 of 3\n\n1. Cover the burn loosely."))
+        self.assertLess(burn.text.index("## Section 2 of 3"),
+                        burn.text.index("## Section 3 of 3\n\n1. See a doctor for a deep burn."))
+        birthday = library.article(library.search("eighteenth birthday party")[0].id).text
+        self.assertIn("## Section 2 of 2\n\n1. Pace yourself.", birthday)
+        kitchen = library.article(library.search("kettle out of reach")[0].id).text
+        self.assertTrue(kitchen.startswith("1. Keep the kettle out of reach."))
 
     def test_rebuilds_a_source_when_its_documents_change(self):
         self.fetch()
