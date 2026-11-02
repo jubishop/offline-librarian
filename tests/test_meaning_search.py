@@ -224,6 +224,29 @@ class MeaningSearchTest(LibraryFixture):
             meaning.embed_library(self.home, self.embedder(model="other-model"), log=lambda line: None)
         self.assertIn("test-embedder", str(caught.exception))
 
+    def test_keywords_count_less_than_meaning(self):
+        # The fusion sweep over the full index (docs/design.md#measurements) scored best with keywords weighted
+        # below meaning, so a passage second by meaning comes before the best keyword match.
+        db = sqlite3.connect(os.path.join(self.home, "library.sqlite"))
+        self.addCleanup(db.close)
+        first_passage = ("SELECT p.hash FROM passages p JOIN articles a ON a.id = p.article_id WHERE a.title = ? "
+                         "ORDER BY p.id LIMIT 1")
+        ranked = [db.execute(first_passage, (title,)).fetchone()[0] for title in ("Hypothermia", "Sauerkraut")]
+
+        class Ranked:
+            """Meaning search that ranks these passages' text first, in order."""
+
+            def available(self):
+                return True
+
+            def ranking(self, question):
+                return [(h, 1.0) for h in ranked]
+
+        library = Library(os.path.join(self.home, "library.sqlite"), meaning=Ranked())
+        self.addCleanup(library.close)
+        self.assertEqual([p.title for p in library.search("sourdough starter")],
+                         ["Hypothermia", "Sauerkraut", "Sourdough"])
+
 
 
 class WorkerTest(LibraryFixture):

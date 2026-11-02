@@ -4,7 +4,7 @@ Articles are stored compressed, and passages are offsets into their article's te
 BM25) holds no text of its own. Keyword search follows Survival LLM's library/search.py (MIT License, Copyright
 (c) 2026 Ronny Fernandez; see LICENSE.survival-llm): every word first, any word when that finds too little, and
 sources weighted by how authoritative they are. When the passages also have vectors (librarian/meaning.py), the
-keyword and meaning rankings are merged by reciprocal rank fusion. Results keep one passage per article,
+keyword and meaning rankings are merged by weighted reciprocal rank fusion. Results keep one passage per article,
 and text that several books share appears once.
 """
 import re
@@ -71,7 +71,19 @@ def query_words(query):
     return [w for w in re.findall(r"[\w']+", query.lower()) if w not in STOPWORDS and len(w) > 1][:12]
 
 
-FUSION_K = 60  # reciprocal rank fusion: each ranking adds 1 / (FUSION_K + rank)
+FUSION_K = 60  # reciprocal rank fusion: each ranking adds its weight / (FUSION_K + rank)
+# Keywords count 0.75 as much as meaning, the best of `bin/eval-retrieval --sweep` on the full index
+# (docs/design.md#measurements).
+KEYWORD_WEIGHT, MEANING_WEIGHT = 0.75, 1.0
+
+
+def fuse(rankings, k=FUSION_K):
+    """Passage ids best first, merging [(weight, passage ids best first)] by weighted reciprocal rank fusion."""
+    fused = {}
+    for weight, ranking in rankings:
+        for rank, pid in enumerate(ranking):
+            fused[pid] = fused.get(pid, 0.0) + weight / (k + rank)
+    return sorted(fused, key=fused.get, reverse=True)
 
 
 class Library:
@@ -129,21 +141,17 @@ class Library:
 
     def ranking(self, query):
         """Passage ids best first, by keyword and, when there are vectors, by meaning."""
-        rankings = [[pid for pid, _ in self.keyword_ranking(query)]]
+        rankings = [(KEYWORD_WEIGHT, [pid for pid, _ in self.keyword_ranking(query)])]
         self.meaning_problem = None
         if self.meaning is not None and self.meaning.available():
             from librarian.meaning import MeaningUnavailable
             try:
-                rankings.append(self._passages_with(h for h, _ in self.meaning.ranking(query)))
+                rankings.append((MEANING_WEIGHT, self._passages_with(h for h, _ in self.meaning.ranking(query))))
             except MeaningUnavailable as exc:
                 self.meaning_problem = f"Searched by keyword only: {exc}"
         if len(rankings) == 1:
-            return rankings[0]
-        fused = {}
-        for ranking in rankings:
-            for rank, pid in enumerate(ranking):
-                fused[pid] = fused.get(pid, 0.0) + 1.0 / (FUSION_K + rank)
-        return sorted(fused, key=fused.get, reverse=True)
+            return rankings[0][1]
+        return fuse(rankings)
 
     def _passages_with(self, hashes):
         """Passage ids whose embedding inputs have these hashes, in the hashes' order; hashes no passage has any
