@@ -46,17 +46,22 @@ with the real `pdftotext`. CI installs `poppler-utils` for it.
 
 ## Retrieval test set
 
-`bin/eval-retrieval` scores search against `evals/questions.json`: 36
-emergency, medical and how-to questions, each listing the articles (source key
-and title pattern) a good answer needs. It runs against the real library and
-reports hit@1, hit@3, hit@8 and mean reciprocal rank for keyword search alone
-and with meaning, then lists the questions whose rank changed.
+`bin/eval-retrieval` scores search against two sets of questions, each
+listing the articles (source key and title pattern) a good answer needs. The
+test set, `evals/questions.json`, holds 36 emergency, medical and how-to
+questions, answered almost all by official and clinical sources. The how-to
+set, `evals/howto.json`, holds 14 how-to questions answered by wikiHow, Stack
+Exchange, iFixit, Wikipedia and other sources without an authority boost.
+It runs against the real library and reports hit@1, hit@3, hit@8 and mean
+reciprocal rank for each set, for keyword search alone and with meaning, then
+lists the questions whose rank changed.
 `bin/eval-retrieval --check` confirms that every expected article exists,
-`--verbose` shows each question's top results, and `--sweep` scores several
-fusion weights and strengths of meaning search's source authority, starting
-with the ones `librarian/library.py` uses. Run it before and after a change to
-search or ranking; it is not part of `bin/check`, because it needs the built
-library and Ollama.
+`--verbose` shows each question's top results, and `--sweep` scores both sets
+at several fusion weights and strengths of meaning search's source authority,
+starting with the ones `librarian/library.py` uses. Run it before and after a
+change to search or ranking, and weigh both sets: stronger authority helps
+the test set at the how-to set's cost. It is not part of `bin/check`, because
+it needs the built library and Ollama.
 
 ## Runtime and toolchain versions
 
