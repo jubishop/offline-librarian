@@ -193,10 +193,13 @@ them.
 | Passages per article | 2,029,972 passages for 497,236 articles | Survival LLM's Essentials library, 2026-10-25 |
 | The built library | 13,800,580 passages in 1,362,534 articles from 28 books, 14 GB | `librarian build`, 2026-10-25 |
 | Embedding under load | 33 passages a second while a build ran | 54,655 trial passages, 2026-10-25 |
-| Retrieval test set, keyword only | hit@1 0.36, hit@3 0.50, hit@8 0.53, MRR 0.44 | `bin/eval-retrieval`, 36 questions, 2026-10-25, and the same on 2026-11-01 |
+| Background embedding worker | about 28 passages a second | 133,157 new wikiHow passage texts, embedded in about 80 minutes by the launch agent during and after a build, 2026-11-01 |
+| Rebuilding one source | 20.5 minutes for `librarian build --rebuild wikihow`, 193 s of it building wikiHow's 125,937 articles | 2026-11-01 |
+| Retrieval test set, keyword only | hit@1 0.36, hit@3 0.50, hit@8 0.53, MRR 0.44 | `bin/eval-retrieval`, 36 questions, 2026-10-25, and the same on 2026-11-01, before and after the wikiHow rebuild |
 | Retrieval test set, keyword + meaning, partial index | hit@1 0.44, hit@3 0.72, hit@8 0.92, MRR 0.61 | the same, with 1.3% of passages embedded (mostly the official sources), 2026-10-25 |
 | Retrieval test set, keyword + meaning, full index, before tuning | hit@1 0.42, hit@3 0.47, hit@8 0.64, MRR 0.47 | the same, with all 14,397,564 passage texts embedded; k = 60, equal weights, 2026-11-01 |
 | Retrieval test set, keyword + meaning, full index, tuned | hit@1 0.44, hit@3 0.47, hit@8 0.64, MRR 0.49 | the same; k = 60, keywords weighted 0.75, 2026-11-01 |
+| Retrieval test set, keyword + meaning, wikiHow guides merged | hit@1 0.42, hit@3 0.47, hit@8 0.64, MRR 0.48 | the same, after rebuilding wikiHow with one article per guide ([#24](https://github.com/jubishop/offline-librarian/issues/24)) and embedding its new passage texts, 2026-11-01 |
 | Retrieval test set, meaning only, full index | hit@1 0.19, hit@3 0.44, hit@8 0.58, MRR 0.33 | the same, scored with a one-off script; 40% of its top 8 results were wikiHow and 30% Stack Exchange, 2026-11-01 |
 | Repeated text | 48,312 distinct inputs in 54,655 passages (12% repeats) | WikEM, NHS medicines and Ready.gov, 2026-10-25 |
 
