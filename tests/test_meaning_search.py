@@ -3,11 +3,16 @@ import offline  # noqa: F401  (tests never reach the internet)
 import os
 import sqlite3
 import tempfile
+import threading
 import unittest
+import zlib
+from unittest import mock
+
+import numpy as np
 
 from books import Page, wiki_page, write_book
-from fake_ollama import FakeOllama
-from librarian import build, meaning
+from fake_ollama import FakeOllama, vector
+from librarian import build, meaning, passages
 from librarian.library import Library
 from test_build_and_search import REWARMING, SHIVERING, STARTER
 
@@ -246,6 +251,116 @@ class MeaningSearchTest(LibraryFixture):
         self.addCleanup(library.close)
         self.assertEqual([p.title for p in library.search("sourdough starter")],
                          ["Hypothermia", "Sauerkraut", "Sourdough"])
+
+
+class UnusedVectorsTest(LibraryFixture):
+    """Vectors no passage uses any more are dropped, and the rows after them move up into the gaps."""
+
+    WATER = ("Disinfect drinking water that may be unsafe with plain unscented household bleach. Add eight drops per "
+             "gallon of clear water, stir, and let it stand for thirty minutes. It should smell slightly of chlorine; "
+             "if it doesn't, repeat the dose and wait another fifteen minutes before drinking it. Double the dose "
+             "for cloudy water, or filter it through a clean cloth first.")
+
+    def new_edition(self):
+        """WikEM's next edition: Hypothermia as it was, Sourdough and Sauerkraut edited, and a new Water page."""
+        write_book(self.home, "wikem_en_all nopic", "wikem_en_all_nopic_2026-11.zim", [
+            HYPOTHERMIA,
+            Page("Sourdough", "Sourdough", wiki_page("Sourdough", [STARTER + " Bake it hot."])),
+            Page("Sauerkraut", "Sauerkraut", wiki_page("Sauerkraut", [FERMENT + " Use a crock."])),
+            Page("Water", "Water", wiki_page("Water", [self.WATER])),
+        ])
+        self.build()
+
+    def stored(self, compacted=True):
+        """{input hash: its vector}, after checking, when compacted, that the file holds exactly the recorded rows,
+        with no gaps."""
+        store = meaning.VectorStore(self.home)
+        self.addCleanup(store.close)
+        rows, dim = dict(store.db.execute("SELECT hash, row FROM vectors")), store.get("dim")
+        if compacted:
+            self.assertEqual(sorted(rows.values()), list(range(len(rows))))
+            self.assertEqual(os.path.getsize(store.vectors_path), len(rows) * dim * 2)
+        vectors = np.fromfile(store.vectors_path, dtype=np.float16).reshape(-1, dim)
+        return {h: vectors[row] for h, row in rows.items()}
+
+    def assert_store_holds_the_library(self, compacted=True):
+        """Every passage text in the library has its own vector in the store, and nothing else is stored."""
+        db = sqlite3.connect(os.path.join(self.home, "library.sqlite"))
+        self.addCleanup(db.close)
+        inputs = {h: passages.embedding_input(title, zlib.decompress(blob).decode()[start:end])
+                  for title, blob, start, end, h in db.execute(
+                      "SELECT a.title, a.text, p.start, p.end, p.hash FROM passages p JOIN articles a "
+                      "ON a.id = p.article_id")}
+        stored = self.stored(compacted)
+        self.assertEqual(set(stored), set(inputs))
+        for h, text in inputs.items():
+            np.testing.assert_allclose(stored[h], vector(text), atol=2e-3)
+
+    def test_drops_the_vectors_a_new_edition_no_longer_uses(self):
+        self.assertEqual(self.embed(), 3)
+        self.new_edition()
+        with mock.patch.object(meaning, "COMPACT_BATCH", 1):  # one row moved at a time, as in many batches
+            self.assertEqual(self.embed(), 3)
+        self.assertIn("dropped 2 vectors no passage uses", self.lines)
+        self.assert_store_holds_the_library()
+        self.assertEqual(self.library().search("frozen and chilly")[0].title, "Hypothermia")
+        self.assertEqual(self.library().search("is the water safe to drink")[0].title, "Water")
+        self.assertEqual(meaning.status(self.home)["embedded"], 4)
+
+    def test_drops_vectors_left_unused_before_builds_were_counted(self):
+        self.embed()
+        self.new_edition()
+        # The library and the store as code from before this check left them: builds not counted, nothing checked.
+        with sqlite3.connect(os.path.join(self.home, "library.sqlite")) as db:
+            db.execute("DROP TABLE IF EXISTS meta")
+        db.close()
+        store = meaning.VectorStore(self.home, write=True)
+        store.db.execute("DELETE FROM meta WHERE key = 'checked_builds'")
+        store.close()
+        self.embed()
+        self.assert_store_holds_the_library()
+
+    def test_the_next_run_finishes_an_interrupted_compaction(self):
+        self.embed()
+        self.new_edition()
+        real, maps = np.memmap, []
+
+        def memmap_until_the_second_batch(*args, **kwargs):
+            maps.append(args)
+            if len(maps) == 2:
+                raise OSError("No space left on device")
+            return real(*args, **kwargs)
+
+        with mock.patch.object(meaning, "COMPACT_BATCH", 1), \
+                mock.patch.object(meaning.np, "memmap", memmap_until_the_second_batch):
+            with self.assertRaises(OSError):
+                self.embed()
+        self.assert_store_holds_the_library(compacted=False)  # one row moved, one not, every vector still found
+        self.embed()
+        self.assert_store_holds_the_library()
+
+    def test_keeps_vectors_until_a_build_finishes(self):
+        # Passages gone without a finished build, as in a library rebuilt from scratch partway through, may come
+        # back when the build finishes, so their vectors stay until then.
+        self.embed()
+        with sqlite3.connect(os.path.join(self.home, "library.sqlite")) as db:
+            db.execute("DELETE FROM passages WHERE article_id = (SELECT id FROM articles WHERE title = 'Sauerkraut')")
+        db.close()
+        self.embed()
+        self.assertEqual(len(self.stored()), 3)
+
+    def test_a_search_waits_while_vectors_move(self):
+        self.embed()
+        library, found = self.library(), []
+        store = meaning.VectorStore(self.home)
+        self.addCleanup(store.close)
+        search = threading.Thread(target=lambda: found.extend(library.search("frozen and chilly")))
+        with store.moving():
+            search.start()
+            search.join(0.5)
+            self.assertTrue(search.is_alive())
+        search.join(10)
+        self.assertEqual(found[0].title, "Hypothermia")
 
 
 
