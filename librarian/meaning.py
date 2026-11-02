@@ -256,13 +256,15 @@ def _unused(home):
             "SELECT row FROM v.vectors WHERE NOT EXISTS (SELECT 1 FROM passages p WHERE p.hash = v.vectors.hash)")]
 
 
-def _builds(library):
-    """How many builds have changed the library; None for a library built before they were counted."""
+def _last_build(library):
+    """The id of the last build that changed the library and finished: "" until a new library's first build has
+    finished, and None for a library built before builds were recorded. Each build has its own id, so a library
+    rebuilt from scratch can't repeat one that was checked."""
     try:
-        row = library.execute("SELECT value FROM meta WHERE key = 'builds'").fetchone()
-    except sqlite3.OperationalError:  # no meta table yet
+        row = library.execute("SELECT value FROM meta WHERE key = 'build'").fetchone()
+    except sqlite3.OperationalError:  # no meta table: built before builds were recorded
         return None
-    return row and row[0]
+    return row[0] if row else ""
 
 
 def _source_ranges(library):
@@ -387,16 +389,16 @@ class _Run:
     def drop_unused(self, library):
         """Once a build has changed the library, drop the vectors no passage uses any more and close their gaps. Only
         a finished build counts, so a library being rebuilt from scratch keeps every vector until its build is done.
-        Builds are counted before looking, so one that finishes meanwhile is looked at again on the next pass."""
-        builds = _builds(library)
-        if self.store.get("checked_builds", "never") == builds:
+        The build is read before looking, so one that finishes meanwhile is looked at again on the next pass."""
+        build = _last_build(library)
+        if build == "" or self.store.get("checked_build", "never") == build:
             return
         unused = _unused(self.home)
         if unused:
             self.store.drop(unused)
             self.log(f"dropped {len(unused):,} vectors no passage uses")
         self.store.compact()
-        self.store.set("checked_builds", builds)
+        self.store.set("checked_build", build)
 
     def _embed_chunk(self, library, todo):
         texts, article_id, article_text = [], None, ""

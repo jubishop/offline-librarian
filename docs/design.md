@@ -231,9 +231,9 @@ These were made while building, not by the user, and can change.
   approximate index or extra dependency is needed.
 - **Vectors no passage uses are dropped.** A new edition or a rebuilt source
   gives edited passages new text, so their old vectors lose every passage.
-  Each build that changes the library and finishes adds one to a count in
+  Each build that changes the library and finishes records a new id in
   `library.sqlite`. When an embedding run has embedded everything and finds
-  a count it hasn't checked, it deletes the vectors whose hash no passage
+  an id it hasn't checked, it deletes the vectors whose hash no passage
   has, moves the last rows of `vectors.f16` into the gaps, 50,000 at a time,
   and cuts the file, so the store stays the size of the library. Each batch
   is written before it is recorded, so an interrupted compaction loses

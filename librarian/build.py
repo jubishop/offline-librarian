@@ -11,6 +11,7 @@ import multiprocessing
 import os
 import re
 import time
+import uuid
 import zlib
 
 from librarian import convert, documents, kiwix, library, passages, sources
@@ -144,7 +145,7 @@ def _hash_old_passages(db, log):
 def build(home, workers=None, rebuild=(), documents_sources=None, log=print):
     """Build every downloaded book and document source into home/library.sqlite that isn't built from its current
     files yet, and the sources whose keys are in rebuild in any case. Returns what isn't downloaded yet. A build that
-    changed something and finished counts itself in the library's meta table, so embedding knows when to drop the
+    changed something and finished records a new id in the library's meta table, so embedding knows when to drop the
     vectors no passage uses any more (librarian/meaning.py)."""
     document_sources = sources.DOCUMENTS if documents_sources is None else documents_sources
     unknown = sorted(set(rebuild) - {s.key for s in sources.SOURCES} - {s.key for s in document_sources})
@@ -191,8 +192,7 @@ def build(home, workers=None, rebuild=(), documents_sources=None, log=print):
             if changed:
                 log("optimizing the search index")
                 db.execute("INSERT INTO fts(fts) VALUES('optimize')")
-                db.execute("INSERT INTO meta(key, value) VALUES('builds', 1) "
-                           "ON CONFLICT(key) DO UPDATE SET value = value + 1")
+                db.execute("INSERT OR REPLACE INTO meta(key, value) VALUES('build', ?)", (uuid.uuid4().hex,))
                 db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             return missing
         finally:

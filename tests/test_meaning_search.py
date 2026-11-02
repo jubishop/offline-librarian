@@ -307,15 +307,15 @@ class UnusedVectorsTest(LibraryFixture):
         self.assertEqual(self.library().search("is the water safe to drink")[0].title, "Water")
         self.assertEqual(meaning.status(self.home)["embedded"], 4)
 
-    def test_drops_vectors_left_unused_before_builds_were_counted(self):
+    def test_drops_vectors_left_unused_before_builds_were_recorded(self):
         self.embed()
         self.new_edition()
-        # The library and the store as code from before this check left them: builds not counted, nothing checked.
+        # The library and the store as code from before this check left them: builds not recorded, nothing checked.
         with sqlite3.connect(os.path.join(self.home, "library.sqlite")) as db:
             db.execute("DROP TABLE IF EXISTS meta")
         db.close()
         store = meaning.VectorStore(self.home, write=True)
-        store.db.execute("DELETE FROM meta WHERE key = 'checked_builds'")
+        store.db.execute("DELETE FROM meta WHERE key = 'checked_build'")
         store.close()
         self.embed()
         self.assert_store_holds_the_library()
@@ -348,6 +348,34 @@ class UnusedVectorsTest(LibraryFixture):
         db.close()
         self.embed()
         self.assertEqual(len(self.stored()), 3)
+
+    def test_keeps_vectors_until_a_library_rebuilt_from_scratch_is_done(self):
+        # A new library is missing whole sources until its first build finishes, so their vectors stay until then.
+        write_book(self.home, "appropedia_en_all maxi", "appropedia_en_all_maxi_2026-02.zim",
+                   [Page("Bread", "Bread", wiki_page("Bread", [STARTER]))])
+        self.build()
+        self.embed()
+        before = set(self.stored())
+        for name in ("library.sqlite", "library.sqlite-wal", "library.sqlite-shm"):
+            if os.path.exists(os.path.join(self.home, name)):
+                os.remove(os.path.join(self.home, name))
+        real, built = build._build_source, []
+
+        def stop_before_the_second_source(*args):
+            built.append(args[1].key)
+            if len(built) == 2:
+                raise RuntimeError("the build stopped")
+            return real(*args)
+
+        with mock.patch.object(build, "_build_source", stop_before_the_second_source), \
+                self.assertRaises(RuntimeError):
+            self.new_edition()
+        self.embed()
+        self.assertLessEqual(before, set(self.stored()))
+        self.build()
+        self.embed()
+        self.assertIn("dropped 2 vectors no passage uses", self.lines)
+        self.assert_store_holds_the_library()
 
     def test_a_search_waits_while_vectors_move(self):
         self.embed()
