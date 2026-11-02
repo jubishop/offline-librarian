@@ -155,8 +155,8 @@ copyright notice.
 ## How a question is answered
 
 1. Search the keyword index (SQLite FTS5, BM25) and the vector index
-   (EmbeddingGemma, cosine similarity) for the question, and merge the two
-   rankings.
+   (EmbeddingGemma, cosine similarity) for the question, favor official and
+   clinical sources in both, and merge the two rankings.
 2. Give the model the best passages, numbered, with their titles and sources.
 3. Have it answer from those passages and cite them by number. When they
    don't cover the question, it says "The library doesn't cover this," then
@@ -201,6 +201,9 @@ them.
 | Retrieval test set, keyword + meaning, full index, tuned | hit@1 0.44, hit@3 0.47, hit@8 0.64, MRR 0.49 | the same; k = 60, keywords weighted 0.75, 2026-11-01 |
 | Retrieval test set, keyword + meaning, wikiHow guides merged | hit@1 0.42, hit@3 0.47, hit@8 0.64, MRR 0.48 | the same, after rebuilding wikiHow with one article per guide ([#24](https://github.com/jubishop/offline-librarian/issues/24)) and embedding its new passage texts, 2026-11-01 |
 | Retrieval test set, meaning only, full index | hit@1 0.19, hit@3 0.44, hit@8 0.58, MRR 0.33 | the same, scored with a one-off script; 40% of its top 8 results were wikiHow and 30% Stack Exchange, 2026-11-01 |
+| Retrieval test set, meaning only, weighted by source | hit@1 0.53, hit@3 0.81, hit@8 0.89, MRR 0.67 | the same, each similarity multiplied by its source's weight to the power 0.3 ([#23](https://github.com/jubishop/offline-librarian/issues/23)); 0.70 at the full weight, 2026-11-02 |
+| Retrieval test set, keyword + meaning, weighted by source | hit@1 0.61, hit@3 0.83, hit@8 0.89, MRR 0.72 | `bin/eval-retrieval`, with all 14,530,721 passage texts embedded; authority 0.3, k = 10, keywords weighted 0.5. The settings before it scored MRR 0.48 on the same index, 2026-11-02 |
+| How-to spot-check | MRR 1.00 before, 0.96 after; expected articles in the top 8 fell from 0.84 to 0.77 | 14 how-to questions outside the test set whose answers are on wikiHow, Stack Exchange, iFixit or Wikipedia, scored with a one-off script; at the full source weight, MRR 0.71 and 0.61 in the top 8, 2026-11-02 |
 | Repeated text | 48,312 distinct inputs in 54,655 passages (12% repeats) | WikEM, NHS medicines and Ready.gov, 2026-10-25 |
 | Vectors no passage uses | 131,230 of 14,530,721 stored vectors, for 14,399,491 distinct passage texts; finding them took 3.7 s | the real store after the wikiHow rebuild, before they were dropped ([#27](https://github.com/jubishop/offline-librarian/issues/27)), 2026-11-02 |
 
@@ -244,17 +247,36 @@ These were made while building, not by the user, and can change.
   done. Vectors whose text might come back, such as from an older edition,
   aren't kept: the library keeps books Kiwix withdraws, so their passages
   and vectors stay anyway.
-- **Keywords count 0.75 as much as meaning.** The keyword and meaning
-  rankings are merged by weighted reciprocal rank fusion (k = 60): each
-  ranking adds its weight divided by k plus the passage's rank. On the full
-  index, `bin/eval-retrieval --sweep` and a wider one-off grid on 2026-11-01
-  found MRR 0.49 for every k from 40 to 80 with keywords weighted 0.7 to 0.75,
-  and for k = 60 from 0.7 to 0.8, against 0.47 for equal weights; no other
-  metric got worse. The net gain is worth about one question's first good
-  result moving from fourth to first. With k of 20 or more, every weighting
-  tried, from keywords at half of meaning's weight to keywords alone, scored
-  between 0.41 and 0.49, so the weights matter much less than what each
-  ranking finds.
+- **Meaning search weighs source authority, gently.** Keyword search
+  multiplies each BM25 score by its source's weight: 1.3 for official and
+  clinical sources, 1.15 for Wikipedia, and 1.0 for the rest. Meaning search
+  multiplies each of its 300 most similar passages' cosine similarity by
+  that weight to the power 0.3, about 8% more for official sources and 4%
+  for Wikipedia, and re-sorts them. A passage whose text is in several books
+  is weighed by each book's source. Similarities fall in a narrow band, about
+  0.85 at the top and 0.74 at the 300th, so the full weight would put nearly
+  every official passage above every other one. On 2026-11-02 the test set
+  scored stronger authority higher, MRR 0.76 at a power of 0.5 or 1, but it
+  expects official sources almost exclusively. A spot-check of how-to
+  questions showed 0.3 keeping good wikiHow, Stack Exchange and iFixit
+  answers: at the full weight, survival-manual passages and loosely related
+  official pages took their places (see
+  [Measurements](#measurements)). At 0.3, some how-to questions still get an
+  unrelated official page near the top, such as MedlinePlus's surgical-drain
+  care for "How do I unclog a bathroom sink drain?". Adding how-to questions
+  to the test set, so a sweep can weigh this itself, is tracked in
+  [#30](https://github.com/jubishop/offline-librarian/issues/30). More
+  candidates didn't help: at these settings, 1,000 scored the same as 300.
+- **Meaning counts twice as much as keywords, with k = 10.** The keyword and
+  meaning rankings are merged by weighted reciprocal rank fusion: each
+  ranking adds its weight divided by k plus the passage's rank. With meaning
+  weighted by source, it became the stronger ranking. At authority 0.3, the
+  sweep and a wider one-off grid on 2026-11-02 found MRR 0.72 for k = 10
+  with keywords weighted 0.4 or 0.5, and 0.71 to 0.72 for k = 15 with 0.25
+  or 0.4.
+  Larger k and heavier keywords scored less: 0.62 at k = 60, and 0.57 with
+  equal weights. Before meaning weighed authority, k = 60 with keywords
+  weighted 0.75 had scored best, at MRR 0.49 on 2026-11-01.
 - **History is searched with FTS5.** `history.sqlite` keeps its
   `conversations` and `messages` tables, and an external-content FTS5 table
   (Porter stemming, as in the library) indexes each message's text. SQLite
@@ -277,15 +299,6 @@ These were made while building, not by the user, and can change.
   questions). It already runs the model on the GPU through MLX.
 
 ## Open questions
-
-- Whether meaning search should weigh source authority, as keyword search
-  does. With every passage embedded, meaning search's results fill with
-  wikiHow and Stack Exchange, and both rankings together scored only MRR
-  0.49, against 0.61 when mostly the official sources were embedded. A trial
-  that multiplied each similarity by its source's weight scored MRR 0.70 for
-  meaning alone and 0.69 together (hit@8 0.89). It is tracked in
-  [#23](https://github.com/jubishop/offline-librarian/issues/23), with the
-  open question of how strong the boost should be.
 
 - How to make embedding faster. Through Ollama it reaches about 12,000 tokens
   a second; larger batches and parallel requests didn't help (2026-10-25).

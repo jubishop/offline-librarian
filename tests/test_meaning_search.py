@@ -20,6 +20,10 @@ FERMENT = ("Lactic acid bacteria ferment cabbage into sauerkraut in about three 
            "percent salt by weight, keep it under its own brine, and taste it every few days until it is sour enough. "
            "A white film on top is harmless kahm yeast; skim it off. Pink, slimy or fuzzy growth means the batch "
            "has spoiled and should be thrown away.")
+BREAD = ("Knead the dough for ten minutes until it is smooth and springs back, then let it rise until doubled. Shape "
+         "the loaf, let it rise again, and bake it in a hot oven until the crust is brown and it sounds hollow. Let "
+         "it cool on a rack for an hour before slicing, or the crumb will be gummy. Wrapped in a cloth, it keeps for "
+         "about three days.")
 HYPOTHERMIA = Page("Hypothermia", "Hypothermia", wiki_page("Hypothermia", [SHIVERING, REWARMING]))
 
 
@@ -229,28 +233,51 @@ class MeaningSearchTest(LibraryFixture):
             meaning.embed_library(self.home, self.embedder(model="other-model"), log=lambda line: None)
         self.assertIn("test-embedder", str(caught.exception))
 
+    def first_passage(self, title):
+        """The text hash of an article's first passage."""
+        db = sqlite3.connect(os.path.join(self.home, "library.sqlite"))
+        try:
+            return db.execute("SELECT p.hash FROM passages p JOIN articles a ON a.id = p.article_id "
+                              "WHERE a.title = ? ORDER BY p.id LIMIT 1", (title,)).fetchone()[0]
+        finally:
+            db.close()
+
+    def ranked(self, scored, question):
+        """Titles found for question when meaning search scores these articles' first passages [(title, similarity)]."""
+        library = Library(os.path.join(self.home, "library.sqlite"),
+                          meaning=Ranked([(self.first_passage(title), similarity) for title, similarity in scored]))
+        self.addCleanup(library.close)
+        return [p.title for p in library.search(question)]
+
     def test_keywords_count_less_than_meaning(self):
         # The fusion sweep over the full index (docs/design.md#measurements) scored best with keywords weighted
         # below meaning, so a passage second by meaning comes before the best keyword match.
-        db = sqlite3.connect(os.path.join(self.home, "library.sqlite"))
-        self.addCleanup(db.close)
-        first_passage = ("SELECT p.hash FROM passages p JOIN articles a ON a.id = p.article_id WHERE a.title = ? "
-                         "ORDER BY p.id LIMIT 1")
-        ranked = [db.execute(first_passage, (title,)).fetchone()[0] for title in ("Hypothermia", "Sauerkraut")]
-
-        class Ranked:
-            """Meaning search that ranks these passages' text first, in order."""
-
-            def available(self):
-                return True
-
-            def ranking(self, question):
-                return [(h, 1.0) for h in ranked]
-
-        library = Library(os.path.join(self.home, "library.sqlite"), meaning=Ranked())
-        self.addCleanup(library.close)
-        self.assertEqual([p.title for p in library.search("sourdough starter")],
+        self.assertEqual(self.ranked([("Hypothermia", 1.0), ("Sauerkraut", 1.0)], "sourdough starter"),
                          ["Hypothermia", "Sauerkraut", "Sourdough"])
+
+    def test_meaning_search_weighs_source_authority(self):
+        # WikEM is an official source (weight 1.3) and Appropedia isn't (1.0), so a WikEM passage a little less
+        # similar to the question comes first, but one much less similar doesn't.
+        write_book(self.home, "appropedia_en_all maxi", "appropedia_en_all_maxi_2026-02.zim",
+                   [Page("Bread", "Bread", wiki_page("Bread", [BREAD]))])
+        self.build()
+        self.assertEqual(self.ranked([("Bread", 0.80), ("Hypothermia", 0.76)], "frozen and chilly"),
+                         ["Hypothermia", "Bread"])
+        self.assertEqual(self.ranked([("Bread", 0.80), ("Hypothermia", 0.70)], "frozen and chilly"),
+                         ["Bread", "Hypothermia"])
+
+
+class Ranked:
+    """Meaning search that finds these passage texts [(hash, similarity)], in order."""
+
+    def __init__(self, scored):
+        self.scored = scored
+
+    def available(self):
+        return True
+
+    def ranking(self, question):
+        return self.scored
 
 
 class UnusedVectorsTest(LibraryFixture):

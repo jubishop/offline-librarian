@@ -4,8 +4,9 @@ Articles are stored compressed, and passages are offsets into their article's te
 BM25) holds no text of its own, and meta records the last build that changed the library. Keyword search follows
 Survival LLM's library/search.py (MIT License, Copyright (c) 2026 Ronny Fernandez; see LICENSE.survival-llm): every
 word first, any word when that finds too little, and sources weighted by how authoritative they are. When the
-passages also have vectors (librarian/meaning.py), the keyword and meaning rankings are merged by weighted reciprocal
-rank fusion. Results keep one passage per article, and text that several books share appears once.
+passages also have vectors (librarian/meaning.py), meaning search weighs sources too, more gently, and the keyword
+and meaning rankings are merged by weighted reciprocal rank fusion. Results keep one passage per article, and text
+that several books share appears once.
 """
 import re
 import sqlite3
@@ -72,10 +73,13 @@ def query_words(query):
     return [w for w in re.findall(r"[\w']+", query.lower()) if w not in STOPWORDS and len(w) > 1][:12]
 
 
-FUSION_K = 60  # reciprocal rank fusion: each ranking adds its weight / (FUSION_K + rank)
-# Keywords count 0.75 as much as meaning, the best of `bin/eval-retrieval --sweep` on the full index
-# (docs/design.md#measurements).
-KEYWORD_WEIGHT, MEANING_WEIGHT = 0.75, 1.0
+# Chosen from `bin/eval-retrieval --sweep` on the full index and a spot-check of how-to questions
+# (docs/design.md#implementation-choices). Cosine similarities fall in a narrow band, so meaning search multiplies
+# each by its source's weight to the power AUTHORITY: the full weight would put nearly every official passage above
+# every other, even for how-to questions that wikiHow and Stack Exchange answer better.
+AUTHORITY = 0.3
+FUSION_K = 10  # reciprocal rank fusion: each ranking adds its weight / (FUSION_K + rank)
+KEYWORD_WEIGHT, MEANING_WEIGHT = 0.5, 1.0
 
 
 def fuse(rankings, k=FUSION_K):
@@ -85,6 +89,12 @@ def fuse(rankings, k=FUSION_K):
         for rank, pid in enumerate(ranking):
             fused[pid] = fused.get(pid, 0.0) + weight / (k + rank)
     return sorted(fused, key=fused.get, reverse=True)
+
+
+def by_authority(candidates, strength=AUTHORITY):
+    """Passage ids best first from Library.meaning_candidates, each similarity multiplied by its source's weight to
+    the power strength."""
+    return [pid for pid, _, _ in sorted(candidates, key=lambda c: c[1] * c[2] ** strength, reverse=True)]
 
 
 class Library:
@@ -147,24 +157,26 @@ class Library:
         if self.meaning is not None and self.meaning.available():
             from librarian.meaning import MeaningUnavailable
             try:
-                rankings.append((MEANING_WEIGHT, self._passages_with(h for h, _ in self.meaning.ranking(query))))
+                rankings.append((MEANING_WEIGHT, by_authority(self.meaning_candidates(query))))
             except MeaningUnavailable as exc:
                 self.meaning_problem = f"Searched by keyword only: {exc}"
         if len(rankings) == 1:
             return rankings[0][1]
         return fuse(rankings)
 
-    def _passages_with(self, hashes):
-        """Passage ids whose embedding inputs have these hashes, in the hashes' order; hashes no passage has any
-        more (from replaced editions) drop out."""
-        hashes = list(hashes)
+    def meaning_candidates(self, query):
+        """[(passage id, similarity, source weight)] for the passage texts most like the question, most similar
+        first. Text no passage has any more (from replaced editions) drops out; text in several books appears once
+        for each."""
+        hits = self.meaning.ranking(query)
         found = {}
-        for at in range(0, len(hashes), 500):
-            part = hashes[at:at + 500]
-            for pid, h in self.db.execute(
-                    f"SELECT id, hash FROM passages WHERE hash IN ({','.join('?' * len(part))})", part):
-                found.setdefault(h, []).append(pid)
-        return [pid for h in hashes for pid in found.get(h, [])]
+        for at in range(0, len(hits), 500):
+            part = [h for h, _ in hits[at:at + 500]]
+            for pid, h, weight in self.db.execute(
+                    "SELECT p.id, p.hash, s.weight FROM passages p JOIN articles a ON a.id = p.article_id "
+                    f"JOIN sources s ON s.id = a.source_id WHERE p.hash IN ({','.join('?' * len(part))})", part):
+                found.setdefault(h, []).append((pid, weight))
+        return [(pid, similarity, weight) for h, similarity in hits for pid, weight in found.get(h, [])]
 
     def search(self, query, limit=8):
         """The best passages for a question, at most one per article."""
