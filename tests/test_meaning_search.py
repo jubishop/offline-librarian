@@ -349,13 +349,13 @@ class UnusedVectorsTest(LibraryFixture):
         self.embed()
         self.assertEqual(len(self.stored()), 3)
 
-    def test_keeps_vectors_until_a_library_rebuilt_from_scratch_is_done(self):
-        # A new library is missing whole sources until its first build finishes, so their vectors stay until then.
+    def add_a_second_source(self):
         write_book(self.home, "appropedia_en_all maxi", "appropedia_en_all_maxi_2026-02.zim",
                    [Page("Bread", "Bread", wiki_page("Bread", [STARTER]))])
         self.build()
-        self.embed()
-        before = set(self.stored())
+
+    def rebuild_from_scratch_partway(self, rebuild):
+        """Delete the library, then run rebuild, which stops before building its second source."""
         for name in ("library.sqlite", "library.sqlite-wal", "library.sqlite-shm"):
             if os.path.exists(os.path.join(self.home, name)):
                 os.remove(os.path.join(self.home, name))
@@ -369,9 +369,37 @@ class UnusedVectorsTest(LibraryFixture):
 
         with mock.patch.object(build, "_build_source", stop_before_the_second_source), \
                 self.assertRaises(RuntimeError):
-            self.new_edition()
+            rebuild()
+
+    def test_keeps_vectors_until_a_library_rebuilt_from_scratch_is_done(self):
+        # A new library is missing whole sources until its first build finishes, so their vectors stay until then.
+        self.add_a_second_source()
+        self.embed()
+        before = set(self.stored())
+        self.rebuild_from_scratch_partway(self.new_edition)
         self.embed()
         self.assertLessEqual(before, set(self.stored()))
+        self.build()
+        self.embed()
+        self.assertIn("dropped 2 vectors no passage uses", self.lines)
+        self.assert_store_holds_the_library()
+
+    def test_keeps_vectors_when_the_library_is_rebuilt_from_scratch_during_a_pass(self):
+        # A pass reads the library it opened to the end, even after that file is deleted for a rebuild from scratch.
+        # The finished build it embedded must not let the vectors of sources the new library lacks go.
+        self.add_a_second_source()
+        self.embed()
+        before = set(self.stored())
+        self.new_edition()
+        real = meaning._Run.drop_unused
+
+        def rebuild_from_scratch_first(run, *args):
+            self.rebuild_from_scratch_partway(self.build)
+            return real(run, *args)
+
+        with mock.patch.object(meaning._Run, "drop_unused", rebuild_from_scratch_first):
+            self.embed()
+        self.assertLessEqual(before, set(self.stored(compacted=False)))
         self.build()
         self.embed()
         self.assertIn("dropped 2 vectors no passage uses", self.lines)

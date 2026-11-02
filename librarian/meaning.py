@@ -249,19 +249,18 @@ def _pending(home, store):
                           "WHERE NOT EXISTS (SELECT 1 FROM v.vectors WHERE v.vectors.hash = p.hash)").fetchone()[0]
 
 
-def _unused(home):
-    """The rows of the vectors that no passage in the library uses."""
-    with _library_and_vectors(home) as db:
-        return [row for (row,) in db.execute(
-            "SELECT row FROM v.vectors WHERE NOT EXISTS (SELECT 1 FROM passages p WHERE p.hash = v.vectors.hash)")]
+def _unused(db):
+    """The rows of the vectors that no passage in the library uses, given a connection from _library_and_vectors."""
+    return [row for (row,) in db.execute(
+        "SELECT row FROM v.vectors WHERE NOT EXISTS (SELECT 1 FROM passages p WHERE p.hash = v.vectors.hash)")]
 
 
 def _last_build(library):
     """The id of the last build that changed the library and finished: "" until a new library's first build has
     finished, and None for a library built before builds were recorded. Each build has its own id, so a library
     rebuilt from scratch can't repeat one that was checked."""
-    try:
-        row = library.execute("SELECT value FROM meta WHERE key = 'build'").fetchone()
+    try:  # main.meta, since the vector store attached as v has a meta table too
+        row = library.execute("SELECT value FROM main.meta WHERE key = 'build'").fetchone()
     except sqlite3.OperationalError:  # no meta table: built before builds were recorded
         return None
     return row[0] if row else ""
@@ -381,19 +380,22 @@ class _Run:
                         return self.done
             self.pending = 0
             self.report("current")
-            self.drop_unused(library)
+            self.drop_unused()
             return self.done
         finally:
             library.close()
 
-    def drop_unused(self, library):
+    def drop_unused(self):
         """Once a build has changed the library, drop the vectors no passage uses any more and close their gaps. Only
         a finished build counts, so a library being rebuilt from scratch keeps every vector until its build is done.
-        The build is read before looking, so one that finishes meanwhile is looked at again on the next pass."""
-        build = _last_build(library)
-        if build == "" or self.store.get("checked_build", "never") == build:
-            return
-        unused = _unused(self.home)
+        The build and the passages come from the library file as it is now, not the one this pass opened, which may
+        have been deleted for such a rebuild since. The build is read before looking, so one that finishes meanwhile
+        is looked at again on the next pass."""
+        with _library_and_vectors(self.home) as db:
+            build = _last_build(db)
+            if build == "" or self.store.get("checked_build", "never") == build:
+                return
+            unused = _unused(db)
         if unused:
             self.store.drop(unused)
             self.log(f"dropped {len(unused):,} vectors no passage uses")
