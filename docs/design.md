@@ -298,13 +298,19 @@ These were made while building, not by the user, and can change.
   [#30](https://github.com/jubishop/offline-librarian/issues/30) on 2026-11-02.
 - **The launch agents bound their own logs.** launchd writes each agent's
   output and errors to `embed.log` and `embed-error.log`, or `update.log`
-  and `update-error.log`, beside the library, and never trims them. The
-  job itself, as it starts and before each line it logs, moves a log past
-  1 MB to its `.previous.log` name, replacing the one there, and points that
-  output at a fresh file, so each agent keeps at most about 4 MB of logs.
-  Renaming alone wouldn't do: launchd hands the job descriptors to the files
-  it opened, so the job reopens its own. A `newsyslog` rule would need root
-  to install in `/etc/newsyslog.d`.
+  and `update-error.log`, beside the library, and never trims them. As the
+  agent starts, a short `/bin/sh` step in its launch command, and then the
+  job itself before each line it logs, moves a log past 1 MB to its
+  `.previous.log` name, replacing the one there, and points that output at
+  a fresh file, so each agent keeps at most about 4 MB of logs. The shell
+  step bounds the output of a start that fails before the job's Python
+  can, such as from a deleted `.venv` or a broken NumPy, which launchd
+  repeats every minute for the worker. Renaming alone wouldn't do: launchd
+  hands the job descriptors to the files it opened, so the job reopens its
+  own. A `newsyslog` rule would need root to install in
+  `/etc/newsyslog.d`. The shell step was added for
+  [#33](https://github.com/jubishop/offline-librarian/issues/33) on
+  2026-11-02.
 - **History is searched with FTS5.** `history.sqlite` keeps its
   `conversations` and `messages` tables, and an external-content FTS5 table
   (Porter stemming, as in the library) indexes each message's text. SQLite

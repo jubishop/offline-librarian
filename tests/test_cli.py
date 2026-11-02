@@ -189,9 +189,10 @@ esac
             agent = plistlib.load(f)
         self.assertEqual(agent["ProcessType"], "Background")
         self.assertTrue(agent["KeepAlive"] and agent["RunAtLoad"])
-        self.assertEqual(agent["ProgramArguments"][1:],
-                         ["embed", "worker", "--model", "embeddinggemma-2:270m-bf16-text"])
-        self.assertTrue(agent["ProgramArguments"][0].endswith("/bin/librarian"))
+        # /bin/sh bounds the logs before the job starts, then runs bin/librarian (tested in test_agent).
+        self.assertEqual(agent["ProgramArguments"][0], "/bin/sh")
+        self.assertEqual(agent["ProgramArguments"][-5:], [os.path.join(ROOT, "bin", "librarian"), "embed", "worker",
+                                                          "--model", "embeddinggemma-2:270m-bf16-text"])
         self.assertEqual(agent["EnvironmentVariables"]["OFFLINE_LIBRARIAN_HOME"], self.home)
         self.assertEqual((agent["StandardOutPath"], agent["StandardErrorPath"]),
                          (os.path.join(self.home, "embed.log"), os.path.join(self.home, "embed-error.log")))
@@ -217,7 +218,8 @@ esac
         self.assertEqual(agent["ProcessType"], "Background")
         self.assertEqual(agent["StartCalendarInterval"], {"Day": 1, "Hour": 3, "Minute": 0})
         self.assertFalse(agent.get("KeepAlive") or agent.get("RunAtLoad"))
-        self.assertEqual(agent["ProgramArguments"][1:], ["update", "run"])
+        self.assertEqual(agent["ProgramArguments"][0], "/bin/sh")
+        self.assertEqual(agent["ProgramArguments"][-3:], [os.path.join(ROOT, "bin", "librarian"), "update", "run"])
         self.assertEqual((agent["StandardOutPath"], agent["StandardErrorPath"]),
                          (os.path.join(self.home, "update.log"), os.path.join(self.home, "update-error.log")))
         self.assertIn("monthly update: scheduled", self.run_librarian("update", "status").stdout)
