@@ -9,6 +9,7 @@ import os
 import plistlib
 import subprocess
 import sys
+import threading
 import time
 
 EMBED = "org.jubishop.offline-librarian.embed"
@@ -27,6 +28,7 @@ def _domain():
 SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
 LOG_LIMIT = 1_000_000  # bytes: a log past this moves aside, and one previous file is kept
 LOGS = {EMBED: "embed", UPDATE: "update"}
+_BOUNDING = threading.Lock()  # the update's downloads log from several threads, and only one may move a log aside
 
 
 def log_paths(home, label=EMBED):
@@ -44,19 +46,20 @@ def bound_logs(home, label=EMBED, limit=LOG_LIMIT, fds=(1, 2)):
     starts the job, and nothing trims them, so the job does: when an output (fds, in log_paths' order) writes to
     its log and that log has passed limit, the log moves to its .previous name, replacing the one there, and the
     output carries on in a fresh file. Output that goes elsewhere, such as to a terminal, is left alone."""
-    sys.stdout.flush()
-    sys.stderr.flush()
-    for fd, path in zip(fds, log_paths(home, label)):
-        try:
-            status = os.fstat(fd)
-            if status.st_size <= limit or not os.path.samestat(status, os.stat(path)):
+    with _BOUNDING:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        for fd, path in zip(fds, log_paths(home, label)):
+            try:
+                status = os.fstat(fd)
+                if status.st_size <= limit or not os.path.samestat(status, os.stat(path)):
+                    continue
+            except OSError:  # no such output, or no such log
                 continue
-        except OSError:  # no such output, or no such log
-            continue
-        os.replace(path, _previous(path))
-        fresh = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
-        os.dup2(fresh, fd)
-        os.close(fresh)
+            os.replace(path, _previous(path))
+            fresh = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+            os.dup2(fresh, fd)
+            os.close(fresh)
 
 
 def job_log(home, label, limit=LOG_LIMIT):

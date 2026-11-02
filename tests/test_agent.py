@@ -4,7 +4,9 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
+from unittest import mock
 
 from librarian import agent
 
@@ -79,6 +81,32 @@ class BoundedLogsTest(unittest.TestCase):
         self.assertEqual(self.read(elsewhere), b"a long run, kept whole\n")
         self.assertEqual(self.read(self.out), b"an old agent log\n")
         self.assertFalse(os.path.exists(os.path.join(self.home, "embed.previous.log")))
+
+    def test_threads_that_log_at_once_move_the_full_log_aside_once(self):
+        # The monthly update's downloads log from several threads. Here one thread is moving the full log aside
+        # when another logs: had the second moved it too, the fresh log would have replaced the full one.
+        os.write(self.fds[0], b"a full log\n")
+        replace, moving, second_done = os.replace, threading.Event(), threading.Event()
+
+        def slow_replace(source, target):
+            if not moving.is_set():
+                moving.set()
+                second_done.wait(timeout=0.2)
+            replace(source, target)
+
+        def second():
+            moving.wait()
+            self.bound()
+            second_done.set()
+
+        thread = threading.Thread(target=second)
+        with mock.patch("os.replace", slow_replace):
+            thread.start()
+            self.bound()
+            thread.join(timeout=10)
+        os.write(self.fds[0], b"next line\n")
+        self.assertEqual(self.read(os.path.join(self.home, "embed.previous.log")), b"a full log\n")
+        self.assertEqual(self.read(self.out), b"next line\n")
 
 
 class JobLogTest(unittest.TestCase):
