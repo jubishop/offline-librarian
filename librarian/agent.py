@@ -2,8 +2,8 @@
 index current at the Background process type (like the user's Stories index), and the monthly update.
 
 The worker starts at login and restarts after a crash; the update runs on a schedule. Install them from the permanent
-checkout: an agent runs the code it was installed from. Each keeps its logs beside the library, bounded by the job
-itself (bound_logs): rotating them with newsyslog would need root.
+checkout: an agent runs the code it was installed from. Each keeps its logs beside the library, bounded as it starts
+(launch_command) and as the job logs (bound_logs): rotating them with newsyslog would need root.
 """
 import os
 import plistlib
@@ -72,6 +72,28 @@ def job_log(home, label, limit=LOG_LIMIT):
     return log
 
 
+# Run by /bin/sh as launchd starts the job, with the limit, the two logs and then the job's command: bound_logs'
+# rule, applied before the job runs.
+_BOUND_AT_START = """\
+limit=$1 out=$2 err=$3
+shift 3
+for log in "$out" "$err"; do
+  if [ -n "$(find "$log" -size +"$limit"c 2>/dev/null)" ]; then mv -f "$log" "${log%.log}.previous.log"; fi
+done
+exec >>"$out" 2>>"$err"
+exec "$@"
+"""
+
+
+def launch_command(home, label, arguments, limit=LOG_LIMIT):
+    """The agent's ProgramArguments: bin/librarian with arguments, after a /bin/sh step that bounds its logs as
+    bound_logs does, so output from a start that fails before the job can log, such as from a missing interpreter
+    or a failed import, stays bounded too. Without it, launchd would append each such start's error, every minute
+    for the worker, to a log that nothing trims until a start succeeds."""
+    return ["/bin/sh", "-c", _BOUND_AT_START, label, str(limit), *log_paths(home, label),
+            os.path.join(ROOT, "bin", "librarian"), *arguments]
+
+
 def _install(label, arguments, home, calendar=None, path=SYSTEM_PATH):
     environment = {"OFFLINE_LIBRARIAN_HOME": home, "PATH": os.pathsep.join(dict.fromkeys(path)),
                    "HOME": os.path.expanduser("~")}
@@ -80,7 +102,7 @@ def _install(label, arguments, home, calendar=None, path=SYSTEM_PATH):
     out, err = log_paths(home, label)
     agent = {
         "Label": label,
-        "ProgramArguments": [os.path.join(ROOT, "bin", "librarian"), *arguments],
+        "ProgramArguments": launch_command(home, label, arguments),
         "EnvironmentVariables": environment,
         "ProcessType": "Background",
         "WorkingDirectory": home,

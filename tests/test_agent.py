@@ -135,5 +135,61 @@ class JobLogTest(unittest.TestCase):
         })
 
 
+class EarlyFailureTest(unittest.TestCase):
+    """A worker start that fails before the job's own code can bound its logs, which launchd repeats every minute
+    under KeepAlive: the agent's launch command bounds them before the job starts."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = tmp.name
+
+    def logs(self):
+        found = {}
+        for name in os.listdir(self.home):
+            with open(os.path.join(self.home, name), "rb") as f:
+                found[name] = f.read()
+        return found
+
+    def start_again_and_again(self, limit, starts, **env):
+        """Start the worker as launchd does, its outputs appended to the logs it was installed with, and check after
+        each start that every log holds at most limit bytes plus one start's output. Returns the logs at the end."""
+        command = agent.launch_command(self.home, agent.EMBED, ["embed", "worker", "--model", "m"], limit=limit)
+        out, err = agent.log_paths(self.home)
+        env = {"PATH": os.pathsep.join(agent.SYSTEM_PATH), "HOME": self.home, "OFFLINE_LIBRARIAN_HOME": self.home,
+               **env}
+        one = None
+        for start in range(starts):
+            with open(out, "ab") as stdout, open(err, "ab") as stderr:
+                result = subprocess.run(command, cwd=self.home, env=env, stdout=stdout, stderr=stderr, timeout=60)
+            self.assertNotEqual(result.returncode, 0)
+            logs = self.logs()
+            one = one or len(logs["embed-error.log"])  # what the first start wrote, as every start does
+            self.assertLessEqual(set(logs), {"embed.log", "embed-error.log", "embed.previous.log",
+                                             "embed-error.previous.log"})
+            for name, text in logs.items():
+                self.assertLessEqual(len(text), limit + one, f"{name} after start {start + 1}")
+        self.assertIn("embed-error.previous.log", logs)
+        return logs
+
+    def test_a_worker_without_its_python_keeps_its_logs_bounded(self):
+        # With its .venv deleted, the launcher says so and stops before any Python runs.
+        logs = self.start_again_and_again(limit=300, starts=10,
+                                          OFFLINE_LIBRARIAN_PYTHON=os.path.join(self.home, "no-python"))
+        self.assertEqual(logs["embed.log"], b"")
+        self.assertIn(b"Offline Librarian isn't set up yet", logs["embed-error.log"])
+
+    def test_a_worker_whose_imports_fail_keeps_its_logs_bounded(self):
+        # The worker imports NumPy before it bounds its own logs, so a broken NumPy prints a traceback every start.
+        with tempfile.TemporaryDirectory() as broken:
+            os.mkdir(os.path.join(broken, "numpy"))
+            with open(os.path.join(broken, "numpy", "__init__.py"), "w") as f:
+                f.write("raise ImportError('this NumPy is broken')\n")
+            logs = self.start_again_and_again(limit=3000, starts=8, OFFLINE_LIBRARIAN_PYTHON=sys.executable,
+                                              PYTHONPATH=broken)
+        self.assertEqual(logs["embed.log"], b"")
+        self.assertIn(b"ImportError: this NumPy is broken", logs["embed-error.log"])
+
+
 if __name__ == "__main__":
     unittest.main()
