@@ -278,7 +278,7 @@ These were made while building, not by the user, and can change.
   equal weights. Before meaning weighed authority, k = 60 with keywords
   weighted 0.75 had scored best, at MRR 0.49 on 2026-11-01. The how-to set
   scores these settings 0.93, as high as any in the sweep; k = 60 scores
-  0.92, k = 20 0.88, and equal weights 0.86.
+  0.92, k = 20 0.88, and equal weights 0.85.
 - **How-to questions are a second, separately scored set.**
   `evals/howto.json` holds 14 how-to questions, such as removing a stripped
   screw, tying a bowline and patching drywall, whose answers are on wikiHow,
@@ -288,9 +288,10 @@ These were made while building, not by the user, and can change.
   questions the user chose and comparable with its earlier scores, and shows
   what a change that helps official answers costs the others. An
   expectation names every article with a section that answers the question,
-  whatever its source: the Army and Air Force survival manuals count for the
-  bowline, which they teach step by step, but not for lighting wet wood,
-  which they mention only in passing. Added for
+  whatever its source, and no others: the Army and Air Force survival
+  manuals count for the bowline, which they teach step by step, but not for
+  lighting wet wood, which they mention only in passing, and two Library of
+  Knots booklets that never mention the bowline don't count for it. Added for
   [#30](https://github.com/jubishop/offline-librarian/issues/30) on
   2026-11-02.
 - **The launch agents bound their own logs.** launchd writes each agent's
