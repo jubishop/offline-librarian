@@ -2,11 +2,13 @@
 index current at the Background process type (like the user's Stories index), and the monthly update.
 
 The worker starts at login and restarts after a crash; the update runs on a schedule. Install them from the permanent
-checkout: an agent runs the code it was installed from.
+checkout: an agent runs the code it was installed from. Each keeps its logs beside the library, bounded by the job
+itself (bound_logs): rotating them with newsyslog would need root.
 """
 import os
 import plistlib
 import subprocess
+import sys
 import time
 
 EMBED = "org.jubishop.offline-librarian.embed"
@@ -23,21 +25,64 @@ def _domain():
 
 
 SYSTEM_PATH = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+LOG_LIMIT = 1_000_000  # bytes: a log past this moves aside, and one previous file is kept
+LOGS = {EMBED: "embed", UPDATE: "update"}
 
 
-def _install(label, arguments, home, log_name, calendar=None, path=SYSTEM_PATH):
+def log_paths(home, label=EMBED):
+    """The agent's output and error logs, beside the library."""
+    return os.path.join(home, f"{LOGS[label]}.log"), os.path.join(home, f"{LOGS[label]}-error.log")
+
+
+def _previous(path):
+    base, extension = os.path.splitext(path)
+    return f"{base}.previous{extension}"
+
+
+def bound_logs(home, label=EMBED, limit=LOG_LIMIT, fds=(1, 2)):
+    """Keep the agent's logs to about limit bytes each, plus one previous file. launchd opens a job's logs when it
+    starts the job, and nothing trims them, so the job does: when an output (fds, in log_paths' order) writes to
+    its log and that log has passed limit, the log moves to its .previous name, replacing the one there, and the
+    output carries on in a fresh file. Output that goes elsewhere, such as to a terminal, is left alone."""
+    sys.stdout.flush()
+    sys.stderr.flush()
+    for fd, path in zip(fds, log_paths(home, label)):
+        try:
+            status = os.fstat(fd)
+            if status.st_size <= limit or not os.path.samestat(status, os.stat(path)):
+                continue
+        except OSError:  # no such output, or no such log
+            continue
+        os.replace(path, _previous(path))
+        fresh = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        os.dup2(fresh, fd)
+        os.close(fresh)
+
+
+def job_log(home, label, limit=LOG_LIMIT):
+    """A log(line) for the agent's job that bounds its logs before each line it prints, and bounds them now, so
+    a job that stops early and restarts every minute, such as a worker with no library yet, stays bounded too."""
+    def log(line):
+        bound_logs(home, label, limit)
+        print(line, flush=True)
+    bound_logs(home, label, limit)
+    return log
+
+
+def _install(label, arguments, home, calendar=None, path=SYSTEM_PATH):
     environment = {"OFFLINE_LIBRARIAN_HOME": home, "PATH": os.pathsep.join(dict.fromkeys(path)),
                    "HOME": os.path.expanduser("~")}
     if os.environ.get("OLLAMA_HOST"):
         environment["OLLAMA_HOST"] = os.environ["OLLAMA_HOST"]
+    out, err = log_paths(home, label)
     agent = {
         "Label": label,
         "ProgramArguments": [os.path.join(ROOT, "bin", "librarian"), *arguments],
         "EnvironmentVariables": environment,
         "ProcessType": "Background",
         "WorkingDirectory": home,
-        "StandardOutPath": os.path.join(home, f"{log_name}.log"),
-        "StandardErrorPath": os.path.join(home, f"{log_name}-error.log"),
+        "StandardOutPath": out,
+        "StandardErrorPath": err,
     }
     if calendar:  # a scheduled job: launchd runs it then, or on waking if the Mac was asleep
         agent["StartCalendarInterval"] = calendar
@@ -59,14 +104,14 @@ def _install(label, arguments, home, log_name, calendar=None, path=SYSTEM_PATH):
 
 def install(home, model):
     """Install (or reinstall) the embedding worker. Returns the plist's path."""
-    return _install(EMBED, ["embed", "worker", "--model", model], home, "embed")
+    return _install(EMBED, ["embed", "worker", "--model", model], home)
 
 
 def install_update(home):
     """Schedule the monthly update: the 1st of each month at 3:00, at Background priority. Its build runs
     pdftotext from where this shell finds it, since launchd's PATH leaves out Homebrew."""
     from librarian import convert
-    return _install(UPDATE, ["update", "run"], home, "update", calendar={"Day": 1, "Hour": 3, "Minute": 0},
+    return _install(UPDATE, ["update", "run"], home, calendar={"Day": 1, "Hour": 3, "Minute": 0},
                     path=[os.path.dirname(convert.pdftotext()), *SYSTEM_PATH])
 
 

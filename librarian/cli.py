@@ -111,12 +111,12 @@ def embed(args, parser):
         agent.uninstall()
         print("Removed the background worker. Vectors made so far are kept.")
         return 0
+    log = agent.job_log(home(), agent.EMBED) if args.action == "worker" else lambda line: print(line, flush=True)
     if not os.path.exists(library_path()):
         print("There is no library to embed yet. Run librarian build first.", file=sys.stderr)
         return 1
     priority.background()
     embedder = meaning.Embedder(model=model)
-    log = lambda line: print(line, flush=True)  # noqa: E731
     if args.action == "worker":
         meaning.worker(home(), embedder, notify=notify.pushover(), log=log)
         return 0
@@ -335,9 +335,9 @@ def update(args, parser):
     if args.action == "status":
         print(f"monthly update: {'scheduled' if agent.running(agent.UPDATE) else 'not installed'}")
         return 0
+    log = agent.job_log(home(), agent.UPDATE)
     priority.background()
-    failures = updater.update(home(), catalog_url=args.catalog, notify=notify.pushover(),
-                              log=lambda line: print(line, flush=True))
+    failures = updater.update(home(), catalog_url=args.catalog, notify=notify.pushover(), log=log)
     for failure in failures:
         print(failure, file=sys.stderr)
     return 1 if failures else 0
