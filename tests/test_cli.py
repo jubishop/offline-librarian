@@ -193,6 +193,8 @@ esac
                          ["embed", "worker", "--model", "embeddinggemma-2:270m-bf16-text"])
         self.assertTrue(agent["ProgramArguments"][0].endswith("/bin/librarian"))
         self.assertEqual(agent["EnvironmentVariables"]["OFFLINE_LIBRARIAN_HOME"], self.home)
+        self.assertEqual((agent["StandardOutPath"], agent["StandardErrorPath"]),
+                         (os.path.join(self.home, "embed.log"), os.path.join(self.home, "embed-error.log")))
         self.assertEqual(self.launchctl_calls(), ["bootout", "print", "bootstrap"])
         self.assertIn("background worker: running", self.run_librarian("embed", "status").stdout)
 
@@ -216,6 +218,8 @@ esac
         self.assertEqual(agent["StartCalendarInterval"], {"Day": 1, "Hour": 3, "Minute": 0})
         self.assertFalse(agent.get("KeepAlive") or agent.get("RunAtLoad"))
         self.assertEqual(agent["ProgramArguments"][1:], ["update", "run"])
+        self.assertEqual((agent["StandardOutPath"], agent["StandardErrorPath"]),
+                         (os.path.join(self.home, "update.log"), os.path.join(self.home, "update-error.log")))
         self.assertIn("monthly update: scheduled", self.run_librarian("update", "status").stdout)
         self.assertEqual(self.run_librarian("update", "uninstall").returncode, 0)
         self.assertFalse(os.path.exists(path))
@@ -242,6 +246,46 @@ esac
         self.assertEqual(result.returncode, 1)
         self.assertIn("pdftotext isn't installed", result.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.user, "Library", "LaunchAgents")))
+
+    def run_as_agent(self, name, *args):
+        """Run the job as launchd does: its output appended to the name.log and name-error.log it was installed
+        with, each already past the size limit. Returns the four files' contents by name."""
+        from librarian import agent
+        full = b"an old line\n" * (agent.LOG_LIMIT // 12 + 1)
+        logs = [os.path.join(self.home, f"{name}.log"), os.path.join(self.home, f"{name}-error.log")]
+        for path in logs:
+            with open(path, "wb") as f:
+                f.write(full)
+        env = {**os.environ, "OFFLINE_LIBRARIAN_HOME": self.home, "HOME": self.user, "PATH": self.path}
+        with open(logs[0], "ab") as out, open(logs[1], "ab") as err:
+            subprocess.run([sys.executable, "-B", "-m", "librarian", *args], cwd=ROOT, env=env, stdout=out,
+                           stderr=err, timeout=120)
+        found = {}
+        for path in os.listdir(self.home):
+            if path.endswith(".log"):
+                with open(os.path.join(self.home, path), "rb") as f:
+                    found[path] = f.read()
+        self.assertEqual(sorted(found), sorted(
+            f"{name}{kind}{suffix}" for kind in ("", "-error") for suffix in (".log", ".previous.log")))
+        self.assertEqual(found[f"{name}.previous.log"], full)
+        self.assertEqual(found[f"{name}-error.previous.log"], full)
+        return found
+
+    def test_the_worker_starts_fresh_logs_when_its_old_ones_are_full(self):
+        # With no library yet, the worker says so and stops, and launchd starts it again a minute later.
+        logs = self.run_as_agent("embed", "embed", "worker")
+        self.assertEqual(logs["embed.log"], b"")
+        self.assertIn(b"There is no library to embed yet", logs["embed-error.log"])
+        self.assertNotIn(b"an old line", logs["embed-error.log"])
+
+    def test_the_update_starts_fresh_logs_when_its_old_ones_are_full(self):
+        site = Site()
+        self.addCleanup(site.close)
+        logs = self.run_as_agent("update", "update", "run", "--catalog", site.catalog())
+        self.assertIn(b"couldn't send a notification", logs["update.log"])
+        self.assertIn(b"the build failed", logs["update-error.log"])
+        for log in ("update.log", "update-error.log"):
+            self.assertNotIn(b"an old line", logs[log])
 
     def test_pause_and_resume_show_in_status(self):
         self.assertIn("state: not started", self.run_librarian("embed", "status").stdout)

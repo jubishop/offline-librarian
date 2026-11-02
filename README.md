@@ -126,7 +126,8 @@ The library lives in `~/.local/share/offline-librarian`, or in
 `$OFFLINE_LIBRARIAN_HOME` when that is set: the books in `zim/`, the other
 documents in `raw/`, the
 articles and their keyword index in `library.sqlite`, and the meaning index in
-`vectors.f16` and `vectors.sqlite`, with the worker's logs beside them. Run `fetch` again to
+`vectors.f16` and `vectors.sqlite`, with the launch agents' logs beside them. Past about 1 MB, a log
+moves to its `.previous.log` name, replacing the one there. Run `fetch` again to
 resume an interrupted download; each file is checked against its SHA-256
 before it is kept. Run `build` again after fetching newer books; it rebuilds
 only the books whose file changed, plus any named with `--rebuild`, such as
