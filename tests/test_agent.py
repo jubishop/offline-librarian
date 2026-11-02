@@ -99,7 +99,7 @@ class BoundedLogsTest(unittest.TestCase):
             self.bound()
             second_done.set()
 
-        thread = threading.Thread(target=second)
+        thread = threading.Thread(target=second, daemon=True)  # if bound_logs regresses, fail instead of hanging
         with mock.patch("os.replace", slow_replace):
             thread.start()
             self.bound()
