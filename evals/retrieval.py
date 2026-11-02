@@ -15,7 +15,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from librarian import cli, meaning, sources  # noqa: E402
-from librarian.library import FUSION_K, KEYWORD_WEIGHT, MEANING_WEIGHT, Library, fuse  # noqa: E402
+from librarian.library import (  # noqa: E402
+    AUTHORITY, FUSION_K, KEYWORD_WEIGHT, MEANING_WEIGHT, Library, by_authority, fuse)
 
 LABELS = {s.label: s.key for s in [*sources.SOURCES, *sources.DOCUMENTS]}
 
@@ -47,32 +48,36 @@ def check(home, questions):
     return 1 if missing else 0
 
 
-# The current setting first, then its neighbors, equal weights, and smaller k.
-SWEEP = [(FUSION_K, KEYWORD_WEIGHT, MEANING_WEIGHT), (60, 0.6, 1), (60, 0.9, 1), (60, 1, 1),
-         (60, 0.5, 1), (60, 1, 0.75), (30, 0.75, 1), (100, 0.75, 1), (20, 1, 1), (10, 1, 1)]
+# The current setting first, then its neighbors in authority, k and keyword weight, and the setting before meaning
+# search weighed authority. These questions expect official and clinical sources almost exclusively, so stronger
+# authority scores higher here by construction; check how-to questions by hand before raising it
+# (docs/design.md#implementation-choices).
+SWEEP = [(FUSION_K, KEYWORD_WEIGHT, MEANING_WEIGHT, AUTHORITY), (10, 0.5, 1, 0), (10, 0.5, 1, 0.15),
+         (10, 0.5, 1, 0.5), (10, 0.5, 1, 1), (20, 0.5, 1, 0.3), (60, 0.5, 1, 0.3), (10, 0.25, 1, 0.3),
+         (10, 0.75, 1, 0.3), (10, 1, 1, 0.3), (60, 0.75, 1, 0)]
 
 
 def sweep(home, questions, limit):
-    """Score several fusion settings (k, keyword weight, meaning weight), ranking each question once."""
+    """Score several settings (k, keyword weight, meaning weight, authority), ranking each question once."""
     library = Library(os.path.join(home, "library.sqlite"), meaning=meaning.Meaning(home, meaning.Embedder()))
     lists = {}
     for item in questions:
         keyword = [pid for pid, _ in library.keyword_ranking(item["q"])]
-        by_meaning = library._passages_with(h for h, _ in library.meaning.ranking(item["q"]))
-        lists[item["q"]] = (keyword, by_meaning)
+        lists[item["q"]] = (keyword, library.meaning_candidates(item["q"]))
     real = library.ranking
-    print(f"{'k':>3} {'keyword':>8} {'meaning':>8} {'hit@1':>6} {'hit@3':>6} {'hit@8':>6} {'MRR':>6}")
-    for k, keyword_weight, meaning_weight in SWEEP:
+    print(f"{'k':>3} {'keyword':>8} {'meaning':>8} {'authority':>9} {'hit@1':>6} {'hit@3':>6} {'hit@8':>6} {'MRR':>6}")
+    for k, keyword_weight, meaning_weight, authority in SWEEP:
         ranks = []
         for item in questions:
-            order = fuse(zip((keyword_weight, meaning_weight), lists[item["q"]]), k)
+            keyword, candidates = lists[item["q"]]
+            order = fuse([(keyword_weight, keyword), (meaning_weight, by_authority(candidates, authority))], k)
             library.ranking = lambda query, order=order: order  # search's per-article and shared-text rules
             ranks.append(first_hit(library.search(item["q"], limit=limit), item["expect"]))
         library.ranking = real
         n = len(ranks)
         hit = lambda c: sum(1 for r in ranks if r and r <= c) / n  # noqa: E731
-        print(f"{k:>3} {keyword_weight:>8} {meaning_weight:>8} {hit(1):6.2f} {hit(3):6.2f} {hit(limit):6.2f} "
-              f"{sum(1 / r for r in ranks if r) / n:6.2f}")
+        print(f"{k:>3} {keyword_weight:>8} {meaning_weight:>8} {authority:>9} {hit(1):6.2f} {hit(3):6.2f} "
+              f"{hit(limit):6.2f} {sum(1 / r for r in ranks if r) / n:6.2f}")
     library.close()
     return 0
 
@@ -83,7 +88,7 @@ def main():
     parser.add_argument("--limit", type=int, default=8)
     parser.add_argument("--verbose", action="store_true", help="show each question's top results")
     parser.add_argument("--check", action="store_true", help="only check that every expected article exists")
-    parser.add_argument("--sweep", action="store_true", help="score several keyword and meaning fusion weights")
+    parser.add_argument("--sweep", action="store_true", help="score several fusion weights and authority strengths")
     args = parser.parse_args()
     with open(os.path.join(ROOT, "evals", "questions.json")) as f:
         questions = json.load(f)
