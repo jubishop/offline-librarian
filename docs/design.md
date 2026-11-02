@@ -193,8 +193,11 @@ them.
 | Passages per article | 2,029,972 passages for 497,236 articles | Survival LLM's Essentials library, 2026-10-25 |
 | The built library | 13,800,580 passages in 1,362,534 articles from 28 books, 14 GB | `librarian build`, 2026-10-25 |
 | Embedding under load | 33 passages a second while a build ran | 54,655 trial passages, 2026-10-25 |
-| Retrieval test set, keyword only | hit@1 0.36, hit@3 0.50, hit@8 0.53, MRR 0.44 | `bin/eval-retrieval`, 36 questions, 2026-10-25 |
-| Retrieval test set, keyword + meaning | hit@1 0.44, hit@3 0.72, hit@8 0.92, MRR 0.61 | the same, with 1.3% of passages embedded (mostly the official sources) |
+| Retrieval test set, keyword only | hit@1 0.36, hit@3 0.50, hit@8 0.53, MRR 0.44 | `bin/eval-retrieval`, 36 questions, 2026-10-25, and the same on 2026-11-01 |
+| Retrieval test set, keyword + meaning, partial index | hit@1 0.44, hit@3 0.72, hit@8 0.92, MRR 0.61 | the same, with 1.3% of passages embedded (mostly the official sources), 2026-10-25 |
+| Retrieval test set, keyword + meaning, full index, before tuning | hit@1 0.42, hit@3 0.47, hit@8 0.64, MRR 0.47 | the same, with all 14,397,564 passage texts embedded; k = 60, equal weights, 2026-11-01 |
+| Retrieval test set, keyword + meaning, full index, tuned | hit@1 0.44, hit@3 0.47, hit@8 0.64, MRR 0.49 | the same; k = 60, keywords weighted 0.75, 2026-11-01 |
+| Retrieval test set, meaning only, full index | hit@1 0.19, hit@3 0.44, hit@8 0.58, MRR 0.33 | the same, scored with a one-off script; 40% of its top 8 results were wikiHow and 30% Stack Exchange, 2026-11-01 |
 | Repeated text | 48,312 distinct inputs in 54,655 passages (12% repeats) | WikEM, NHS medicines and Ready.gov, 2026-10-25 |
 
 The built library has 13.8 million passages, more than the 10 million
@@ -221,8 +224,18 @@ These were made while building, not by the user, and can change.
   counts only once it is recorded, so an interrupted run resumes cleanly. A
   search compares the question with every row: about 0.6 seconds for 10
   million rows on the M5 Pro (2 million measured, 2026-10-25), so no
-  approximate index or extra dependency is needed. Keyword and meaning
-  rankings are merged by reciprocal rank fusion (k = 60).
+  approximate index or extra dependency is needed.
+- **Keywords count 0.75 as much as meaning.** The keyword and meaning
+  rankings are merged by weighted reciprocal rank fusion (k = 60): each
+  ranking adds its weight divided by k plus the passage's rank. On the full
+  index, `bin/eval-retrieval --sweep` and a wider one-off grid on 2026-11-01
+  found MRR 0.49 for every k from 40 to 80 with keywords weighted 0.7 to 0.75,
+  and for k = 60 from 0.7 to 0.8, against 0.47 for equal weights; no other
+  metric got worse. The net gain is worth about one question's first good
+  result moving from fourth to first. With k of 20 or more, every weighting
+  tried, from keywords at half of meaning's weight to keywords alone, scored
+  between 0.41 and 0.49, so the weights matter much less than what each
+  ranking finds.
 - **History is searched with FTS5.** `history.sqlite` keeps its
   `conversations` and `messages` tables, and an external-content FTS5 table
   (Porter stemming, as in the library) indexes each message's text. SQLite
@@ -246,10 +259,14 @@ These were made while building, not by the user, and can change.
 
 ## Open questions
 
-- How much meaning should count against keywords. With 1.3% embedded, weighting
-  keywords at 0.7 scored hit@1 0.53 and MRR 0.67 against 0.44 and 0.61, but the
-  partial index holds almost only the official sources the test set expects, so
-  this waits for the full index.
+- Whether meaning search should weigh source authority, as keyword search
+  does. With every passage embedded, meaning search's results fill with
+  wikiHow and Stack Exchange, and both rankings together scored only MRR
+  0.49, against 0.61 when mostly the official sources were embedded. A trial
+  that multiplied each similarity by its source's weight scored MRR 0.70 for
+  meaning alone and 0.69 together (hit@8 0.89). It is tracked in
+  [#23](https://github.com/jubishop/offline-librarian/issues/23), with the
+  open question of how strong the boost should be.
 
 - How to make embedding faster. Through Ollama it reaches about 12,000 tokens
   a second; larger batches and parallel requests didn't help (2026-10-25).

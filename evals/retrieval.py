@@ -15,7 +15,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from librarian import cli, meaning, sources  # noqa: E402
-from librarian.library import Library  # noqa: E402
+from librarian.library import FUSION_K, KEYWORD_WEIGHT, MEANING_WEIGHT, Library, fuse  # noqa: E402
 
 LABELS = {s.label: s.key for s in [*sources.SOURCES, *sources.DOCUMENTS]}
 
@@ -47,7 +47,9 @@ def check(home, questions):
     return 1 if missing else 0
 
 
-SWEEP = [(60, 1, 1), (60, 0.7, 1), (60, 0.5, 1), (60, 1, 0.7), (20, 1, 1), (20, 0.7, 1), (10, 1, 1)]
+# The current setting first, then its neighbors, equal weights, and smaller k.
+SWEEP = [(FUSION_K, KEYWORD_WEIGHT, MEANING_WEIGHT), (60, 0.6, 1), (60, 0.9, 1), (60, 1, 1),
+         (60, 0.5, 1), (60, 1, 0.75), (30, 0.75, 1), (100, 0.75, 1), (20, 1, 1), (10, 1, 1)]
 
 
 def sweep(home, questions, limit):
@@ -63,11 +65,7 @@ def sweep(home, questions, limit):
     for k, keyword_weight, meaning_weight in SWEEP:
         ranks = []
         for item in questions:
-            fused = {}
-            for weight, ranking in zip((keyword_weight, meaning_weight), lists[item["q"]]):
-                for rank, pid in enumerate(ranking):
-                    fused[pid] = fused.get(pid, 0.0) + weight / (k + rank)
-            order = sorted(fused, key=fused.get, reverse=True)
+            order = fuse(zip((keyword_weight, meaning_weight), lists[item["q"]]), k)
             library.ranking = lambda query, order=order: order  # search's per-article and shared-text rules
             ranks.append(first_hit(library.search(item["q"], limit=limit), item["expect"]))
         library.ranking = real
