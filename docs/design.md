@@ -205,7 +205,7 @@ them.
 | Retrieval test set, keyword + meaning, weighted by source | hit@1 0.61, hit@3 0.83, hit@8 0.89, MRR 0.72 | `bin/eval-retrieval`, with all 14,530,721 passage texts embedded; authority 0.3, k = 10, keywords weighted 0.5. The settings before it scored MRR 0.48 on the same index, 2026-11-02 |
 | How-to spot-check | MRR 1.00 before, 0.96 after; expected articles in the top 8 fell from 0.84 to 0.77 | 14 how-to questions outside the test set whose answers are on wikiHow, Stack Exchange, iFixit or Wikipedia, scored with a one-off script; at the full source weight, MRR 0.71 and 0.61 in the top 8, 2026-11-02 |
 | How-to set, keyword only | hit@1 0.64, hit@3 0.79, hit@8 0.79, MRR 0.71 | `bin/eval-retrieval`, 14 questions in `evals/howto.json` ([#30](https://github.com/jubishop/offline-librarian/issues/30)), 2026-11-02 |
-| How-to set, keyword + meaning, weighted by source | hit@1 0.86, hit@3 1.00, hit@8 1.00, MRR 0.93 | the same, with all 14,399,491 passage texts embedded; authority 0.3, k = 10, keywords weighted 0.5. The test set scored MRR 0.72 in the same run. At authority 0.5 and 1, `--sweep` scored the how-to set 0.81 and 0.77 and the test set 0.76, 2026-11-02 |
+| How-to set, keyword + meaning, weighted by source | hit@1 0.93, hit@3 1.00, hit@8 1.00, MRR 0.96 | the same, with all 14,399,491 passage texts embedded; authority 0.3, k = 10, keywords weighted 0.5. The test set scored MRR 0.72 in the same run. At authority 0.5 and 1, `--sweep` scored the how-to set 0.89 and 0.85 and the test set 0.76, 2026-11-02 |
 | Repeated text | 48,312 distinct inputs in 54,655 passages (12% repeats) | WikEM, NHS medicines and Ready.gov, 2026-10-25 |
 | Vectors no passage uses | 131,230 of 14,530,721 stored vectors, for 14,399,491 distinct passage texts; finding them took 3.7 s | the real store after the wikiHow rebuild, before they were dropped ([#27](https://github.com/jubishop/offline-librarian/issues/27)), 2026-11-02 |
 
@@ -260,7 +260,7 @@ These were made while building, not by the user, and can change.
   every official passage above every other one. On 2026-11-02 the test set
   scored stronger authority higher, MRR 0.76 at a power of 0.5 or 1, but it
   expects official sources almost exclusively. The how-to set scored it
-  lower: MRR 0.93 at 0.3 and below, 0.81 at 0.5 and 0.77 at 1. At the full
+  lower: MRR 0.96 at 0.3 and below, 0.89 at 0.5 and 0.85 at 1. At the full
   weight, survival-manual passages and loosely related official pages took
   the places of good wikiHow, Stack Exchange and iFixit answers (see
   [Measurements](#measurements)). At 0.3, some how-to questions still get an
@@ -277,8 +277,8 @@ These were made while building, not by the user, and can change.
   Larger k and heavier keywords scored less: 0.62 at k = 60, and 0.57 with
   equal weights. Before meaning weighed authority, k = 60 with keywords
   weighted 0.75 had scored best, at MRR 0.49 on 2026-11-01. The how-to set
-  scores these settings 0.93, as high as any in the sweep; k = 60 scores
-  0.92, k = 20 0.88, and equal weights 0.85.
+  scores these settings 0.96, as high as any in the sweep; k = 20 and
+  k = 60 score 0.92, and equal weights 0.85.
 - **How-to questions are a second, separately scored set.**
   `evals/howto.json` holds 14 how-to questions, such as removing a stripped
   screw, tying a bowline and patching drywall, whose answers are on wikiHow,
@@ -290,10 +290,12 @@ These were made while building, not by the user, and can change.
   expectation names every article with a section that answers the question,
   whatever its source, and no others: the Army and Air Force survival
   manuals count for the bowline, which they teach step by step, but not for
-  lighting wet wood, which they mention only in passing, and two Library of
-  Knots booklets that never mention the bowline don't count for it. Added for
-  [#30](https://github.com/jubishop/offline-librarian/issues/30) on
-  2026-11-02.
+  lighting wet wood, which they and wikiHow's general fire guides mention
+  only in passing, while Robert Graves's bushcraft books, in the Post
+  Disaster library, count for it with a section on lighting a fire after
+  rain. Two Library of Knots booklets that never mention the bowline don't
+  count for it. Added for
+  [#30](https://github.com/jubishop/offline-librarian/issues/30) on 2026-11-02.
 - **The launch agents bound their own logs.** launchd writes each agent's
   output and errors to `embed.log` and `embed-error.log`, or `update.log`
   and `update-error.log`, beside the library, and never trims them. The
