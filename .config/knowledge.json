@@ -24,5 +24,11 @@
       "context": {"/": "Shared Project Starter policy for engineering and knowledge search. Project rules take precedence wherever they differ."}
     }
   },
-  "checks": {"exclude": ["memory/pr_reviews/**"]}
+  "checks": {"exclude": ["memory/pr_reviews/**"]},
+  "memoryAudit": {
+    "schedule": {
+      "weekday": "Monday",
+      "hour": 5
+    }
+  }
 }
